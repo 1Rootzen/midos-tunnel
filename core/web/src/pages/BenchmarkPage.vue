@@ -3,24 +3,45 @@ import { ref, computed, onMounted } from 'vue';
 import { api } from '../lib/api.js';
 import { fail, toast } from '../lib/toast.js';
 import { fa, ms } from '../lib/format.js';
-import { t, pct } from '../lib/i18n.js';
+import { t, pct, fwd } from '../lib/i18n.js';
+import { nodeName, cableKindText, KERNEL_MODES } from '../lib/fleet.js';
 import { TRANSPORTS, trName } from '../lib/constants.js';
 import PageHead from '../components/PageHead.vue';
 import FormField from '../components/FormField.vue';
 import AppIcon from '../components/AppIcon.vue';
 
 // Path test: pick (or type) a server and a few TCP ports and see what gets
-// through and how fast, before committing to a transport.
+// through and how fast, before committing to a transport. It runs from this
+// server or from one of the fleet's; a tunnel the designer built between two
+// other servers is tested from the end that dials, toward the other.
 const TCP_TRANSPORTS = ['tls', 'ws', 'tcp', 'stealth', 'grpc'];
 const host = ref('');
 const ports = ref([{ port: '', transport: 'tls' }]);
 const pick = ref('');
 const tunnels = ref([]);
+const from = ref('self');
+const sources = ref([]); // fleet servers the test can run from
+const cables = ref([]); // tunnels between two other servers
 const running = ref(false);
 const result = ref(null);
 
+function fromCable(c) {
+  from.value = c.from;
+  host.value = c.host;
+  if (c.kind === 'kernel') {
+    // a kernel tunnel rides MOI/ESP, which has no handshake to time: test the
+    // route and the ports a relay between the two would use
+    if (!ports.value.some((p) => p.port)) ports.value = [{ port: '443', transport: 'tls' }];
+    return;
+  }
+  ports.value = [{ port: String(c.port || 443), transport: TCP_TRANSPORTS.includes(c.transport) ? c.transport : 'tcp' }];
+}
+
 async function fromTunnel() {
   if (!pick.value) return;
+  const c = cables.value.find((x) => x.id === pick.value);
+  if (c) { fromCable(c); return; }
+  from.value = 'self';
   try {
     const t = await api('GET', '/api/tunnels/' + encodeURIComponent(pick.value));
     const c = t.config || {};
@@ -38,7 +59,7 @@ async function run() {
   if (!rows.length) { toast(t('حداقل یک پورت اضافه کنید'), 'err'); return; }
   running.value = true;
   result.value = null;
-  try { result.value = await api('POST', '/api/benchmark', { host: host.value.trim(), ports: rows }); }
+  try { result.value = await api('POST', '/api/benchmark', { host: host.value.trim(), from: from.value, ports: rows }); }
   catch (e) { fail(e); }
   running.value = false;
 }
@@ -54,6 +75,19 @@ onMounted(async () => {
     const ts = await api('GET', '/api/tunnels');
     tunnels.value = ts.filter((t) => { const c = t.config || {}; return (c.endpoints && c.endpoints.length) || c.server; }).map((t) => t.id);
   } catch (_) { /* the picker is optional */ }
+  try {
+    const f = await api('GET', '/api/fleet');
+    const byId = Object.fromEntries(f.nodes.map((n) => [n.id, n]));
+    sources.value = f.nodes.filter((n) => n.kind !== 'self' && n.state === 'ready').map((n) => ({ id: n.id, name: nodeName(n) }));
+    cables.value = (f.links || []).filter((l) => l.tunnel && byId[l.a] && byId[l.b] && byId[l.a].kind !== 'self' && byId[l.b].kind !== 'self')
+      .map((l) => {
+        const [iran, kharej] = byId[l.a].role === 'kharej' ? [byId[l.b], byId[l.a]] : [byId[l.a], byId[l.b]];
+        // a reverse tunnel is dialled by the Kharej end
+        const [src, dst] = l.kind === 'direct' && l.reverse ? [kharej, iran] : [iran, kharej];
+        return { id: 'net:' + l.id, from: src.id, host: dst.host || dst.ip, kind: l.kind, port: l.port, transport: l.transport,
+          label: nodeName(iran) + ' ' + fwd() + ' ' + nodeName(kharej) + ' · ' + cableKindText(l, KERNEL_MODES) };
+      });
+  } catch (_) { /* no fleet: the test runs from this server */ }
 });
 </script>
 
@@ -64,8 +98,12 @@ onMounted(async () => {
       <FormField :label="$t('سرور مقصد')">
         <div class="row-wrap">
           <input v-model="host" type="text" dir="ltr" :placeholder="$t('مثلاً 203.0.113.9 یا example.com')" />
-          <select v-model="pick" @change="fromTunnel"><option value="">{{ $t('انتخاب از تانل‌ها…') }}</option><option v-for="id in tunnels" :key="id" :value="id">{{ id }}</option></select>
+          <select v-model="pick" @change="fromTunnel"><option value="">{{ $t('انتخاب از تانل‌ها…') }}</option><option v-for="id in tunnels" :key="id" :value="id">{{ id }}</option>
+            <option v-for="c in cables" :key="c.id" :value="c.id">{{ c.label }}</option></select>
         </div>
+      </FormField>
+      <FormField v-if="sources.length" :label="$t('تست از')">
+        <select v-model="from"><option value="self">{{ $t('این سرور') }}</option><option v-for="n in sources" :key="n.id" :value="n.id">{{ n.name }}</option></select>
       </FormField>
       <FormField :label="$t('پورت‌ها (ترنسپورت‌های مبتنی بر TCP)')">
         <div v-for="(p, i) in ports" :key="i" class="port-row">
@@ -82,7 +120,7 @@ onMounted(async () => {
     <div v-if="running" class="card bench-wait"><span class="spin"></span> {{ $t('در حال تست… (چند ثانیه)') }}</div>
     <template v-if="result">
       <div class="card reco" :class="{ bad: !result.recommend.ok }">
-        <div class="tag">{{ $t('پیشنهاد') }}</div>
+        <div class="tag">{{ $t('پیشنهاد') }}<template v-if="result.from"> · {{ $t('از «{name}»', { name: result.from }) }}</template></div>
         <div v-if="result.recommend.ok" class="reco-line">
           <AppIcon name="check" draw /> <b>{{ $t('پورت') }} <span class="num">{{ fa(result.recommend.port) }}</span></b>
           · {{ trName(result.recommend.transport) }} · <span class="faint num">{{ ms(result.recommend.avg_ms) }}</span>

@@ -9,16 +9,26 @@ package main
 // month. When a tunnel has a monthly limit and passes it, the sampler stops the
 // tunnel (managed ones only) and sends one alert; raising or clearing the limit
 // arms it again.
+//
+// Tunnels the network designer built run on the fleet's servers, so their
+// traffic comes from the fleet samples instead: a kernel cable's from its
+// peer interface on the Iran end, a relay's from its Iran end. A relay with
+// this server at one end is a local tunnel and is counted under its own name.
 
 import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
 
 const usageInterval = 30 * time.Second
+
+// fleetUsagePrefix marks a cable's record ("net:<cable id>"); tunnel names
+// cannot contain the colon.
+const fleetUsagePrefix = "net:"
 
 type usageRec struct {
 	Month      string `json:"month"` // YYYY-MM of the current bucket
@@ -179,8 +189,115 @@ func (s *panelServer) usageLoop() {
 				}
 			}
 		}
+		if cables := usageCables(s.loadTopology()); len(cables) > 0 {
+			for _, l := range cables {
+				keep[fleetUsagePrefix+l.ID] = true
+			}
+			// the fleet sampler feeds these records, also with no page open
+			s.fleetOnce.Do(func() { go s.fleetLoop() })
+		}
 		s.usage.forget(keep)
 	}
+}
+
+// usageCables lists the applied cables whose traffic comes from the fleet.
+func usageCables(t topology) []topoLink {
+	var out []topoLink
+	for _, l := range t.Links {
+		if l.Tunnel == "" {
+			continue
+		}
+		if l.Kind != "kernel" {
+			a, _ := nodeByID(t, l.A)
+			b, _ := nodeByID(t, l.B)
+			if a.Kind == "self" || b.Kind == "self" {
+				continue
+			}
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
+// cableEnds returns a cable's Iran and Kharej servers.
+func cableEnds(t topology, l topoLink) (iran, kharej topoNode, ok bool) {
+	a, okA := nodeByID(t, l.A)
+	b, okB := nodeByID(t, l.B)
+	if !okA || !okB {
+		return topoNode{}, topoNode{}, false
+	}
+	if roleOf(t, a) == "kharej" {
+		a, b = b, a
+	}
+	return a, b, true
+}
+
+// cableCounter reads a cable's raw byte counter from the fleet samples; ok is
+// false when there is no fresh reading.
+func (s *panelServer) cableCounter(t topology, l topoLink, stats map[string]nodeStats) (raw uint64, active, ok bool) {
+	iran, kharej, found := cableEnds(t, l)
+	if !found {
+		return 0, false, false
+	}
+	st, have := stats[iran.ID]
+	if !have || st.Error != "" {
+		return 0, false, false
+	}
+	if l.Kind == "kernel" {
+		host := kharej.IP
+		if kharej.Kind == "self" {
+			cfg := s.config()
+			host = publicHost(&cfg)
+		}
+		v, seen := st.KernelPeers[host]
+		return v, st.Kernel == "active", seen
+	}
+	for _, tn := range st.Tunnels {
+		if tn.Name == l.Tunnel {
+			up := tn.Active == "active"
+			return tn.Bytes, up, up
+		}
+	}
+	return 0, false, false
+}
+
+func (s *panelServer) fleetStatsCopy() map[string]nodeStats {
+	s.fleetMu.Lock()
+	defer s.fleetMu.Unlock()
+	out := make(map[string]nodeStats, len(s.fleetStats))
+	for k, v := range s.fleetStats {
+		out[k] = v
+	}
+	return out
+}
+
+// recordFleetUsage folds the latest fleet samples into the cables' records.
+func (s *panelServer) recordFleetUsage(t topology) {
+	cables := usageCables(t)
+	if s.usage == nil || len(cables) == 0 {
+		return
+	}
+	stats := s.fleetStatsCopy()
+	for _, l := range cables {
+		if raw, _, ok := s.cableCounter(t, l, stats); ok {
+			s.usage.record(fleetUsagePrefix+l.ID, raw)
+		}
+	}
+	s.usage.save()
+}
+
+// usageKnown reports whether id is a tunnel or a counted cable.
+func (s *panelServer) usageKnown(id string) bool {
+	if strings.HasPrefix(id, fleetUsagePrefix) {
+		for _, l := range usageCables(s.loadTopology()) {
+			if fleetUsagePrefix+l.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+	_, ok := s.tunnelByID(id)
+	return ok
 }
 
 func (s *panelServer) handleUsage(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +310,11 @@ func (s *panelServer) handleUsage(w http.ResponseWriter, r *http.Request) {
 		TotalBytes uint64 `json:"total_bytes"`
 		LimitBytes uint64 `json:"limit_bytes"`
 		LimitHit   bool   `json:"limit_hit"`
+		// a cable between fleet servers: its two ends and kind, no limit
+		Fleet bool   `json:"fleet,omitempty"`
+		From  string `json:"from,omitempty"`
+		To    string `json:"to,omitempty"`
+		Kind  string `json:"kind,omitempty"`
 	}
 	var out []row
 	for _, t := range s.findTunnels() {
@@ -204,6 +326,25 @@ func (s *panelServer) handleUsage(w http.ResponseWriter, r *http.Request) {
 			ID: t.ID, Managed: t.Managed, Active: s.unitStatus(t.Unit).Active == "active",
 			Month: rec.Month, MonthBytes: rec.MonthBytes, TotalBytes: rec.TotalBytes,
 			LimitBytes: rec.LimitBytes, LimitHit: rec.LimitHit,
+		})
+	}
+	t := s.loadTopology()
+	stats := s.fleetStatsCopy()
+	for _, l := range usageCables(t) {
+		iran, kharej, ok := cableEnds(t, l)
+		if !ok {
+			continue
+		}
+		id := fleetUsagePrefix + l.ID
+		rec := usageRec{Month: curMonth()}
+		if s.usage != nil {
+			rec = s.usage.get(id)
+		}
+		_, active, _ := s.cableCounter(t, l, stats)
+		out = append(out, row{
+			ID: id, Managed: true, Active: active, Fleet: true,
+			From: nodeName(iran), To: nodeName(kharej), Kind: l.Kind,
+			Month: rec.Month, MonthBytes: rec.MonthBytes, TotalBytes: rec.TotalBytes,
 		})
 	}
 	if out == nil {
@@ -242,7 +383,7 @@ func (s *panelServer) handleUsageReset(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	if _, ok := s.tunnelByID(req.ID); !ok {
+	if !s.usageKnown(req.ID) {
 		jsonError(w, http.StatusNotFound, "no such tunnel")
 		return
 	}

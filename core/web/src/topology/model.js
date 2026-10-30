@@ -4,7 +4,7 @@ import { KERNEL_MODES, CABLE, cableType } from './engine.js';
 
 export const DEF_PORT = { tls: 443, ws: 443, tcp: 8080, stealth: 8443, kcp: 4000, quic: 8443, grpc: 2096, dns: 53 };
 // shown through t() where it is rendered
-export const STATE_TEXT = { draft: 'اعمال‌نشده', up: 'متصل', warn: 'فعال، بدون حامل', down: 'خطا', off: 'متوقف', missing: 'تانل پیدا نشد' };
+export { STATE_TEXT } from '../lib/fleet.js';
 
 export const uid = (p) => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 

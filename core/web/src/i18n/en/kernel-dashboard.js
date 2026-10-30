@@ -110,6 +110,8 @@ export default {
   'سرور مقصد': 'Target server',
   'مثلاً 203.0.113.9 یا example.com': 'e.g. 203.0.113.9 or example.com',
   'انتخاب از تانل‌ها…': 'Pick from tunnels…',
+  'تست از': 'Test from',
+  'از «{name}»': 'from “{name}”',
   'پورت‌ها (ترنسپورت‌های مبتنی بر TCP)': 'Ports (TCP-based transports)',
   'افزودن پورت': 'Add port',
   'اجرای تست': 'Run test',

@@ -5,23 +5,27 @@ import { usePoll } from '../lib/poll.js';
 import { store } from '../lib/store.js';
 import { fa, bytes, mbit, dur } from '../lib/format.js';
 import { pct } from '../lib/i18n.js';
+import { fleetTunnels } from '../lib/fleet.js';
 import PageHead from '../components/PageHead.vue';
 import RingGauge from '../components/RingGauge.vue';
 import LineChart from '../components/LineChart.vue';
 import HealthMap from '../components/HealthMap.vue';
 import TunnelRow from '../components/TunnelRow.vue';
 import KernelRow from '../components/KernelRow.vue';
+import FleetTunnelRow from '../components/FleetTunnelRow.vue';
 import AppIcon from '../components/AppIcon.vue';
 
 const sys = shallowRef(null);
 const tunnels = shallowRef([]);
 const kernel = shallowRef(null);
+const cables = shallowRef([]);
 const loaded = ref(false);
 
 usePoll(async () => {
-  const [s, t, k] = await Promise.all([api('GET', '/api/system'), api('GET', '/api/tunnels'), api('GET', '/api/kernel').catch(() => null)]);
+  const [s, t, k, f] = await Promise.all([api('GET', '/api/system'), api('GET', '/api/tunnels'), api('GET', '/api/kernel').catch(() => null), api('GET', '/api/fleet').catch(() => null)]);
   sys.value = s;
   tunnels.value = t;
+  cables.value = fleetTunnels(f);
   kernel.value = k && k.installed ? k : null;
   loaded.value = true;
 }, 3000);
@@ -65,14 +69,15 @@ const CPU = [{ key: 'cpu', color: '#6c75e6', glow: true }];
 
     <div class="card map-card">
       <div class="card-head"><h3><AppIcon name="node" /> {{ $t('نقشهٔ سلامت') }}</h3><span class="tag">LIVE TOPOLOGY</span></div>
-      <HealthMap :tunnels="tunnels" />
+      <HealthMap :tunnels="tunnels" :kernel="kernel" :cables="cables" />
     </div>
 
     <div class="section-title">{{ $t('تانل‌ها') }}</div>
     <div class="tunnels">
       <KernelRow v-if="kernel" :k="kernel" />
       <TunnelRow v-for="t in tunnels" :key="t.id" :t="t" />
-      <div v-if="loaded && !tunnels.length && !kernel" class="card empty">
+      <FleetTunnelRow v-for="c in cables" :key="c.id" :c="c" />
+      <div v-if="loaded && !tunnels.length && !kernel && !cables.length" class="card empty">
         {{ $t('هنوز تانلی نیست.') }} <a href="#" @click.prevent="store.newTunnel = true">{{ $t('یک تانل بسازید') }}</a>
       </div>
     </div>

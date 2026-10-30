@@ -245,6 +245,20 @@ func (s *panelServer) fleetAuthorizedLine() (string, error) {
 	return line + " " + fleetKeyComment + "@" + sanitizeLabel(host, "panel"), nil
 }
 
+var errHostKeyChanged = errors.New("کلید میزبان سرور عوض شده است (سرور دوباره نصب شده؟)؛ سرور را دوباره اضافه کنید")
+
+// hostKeyAlgos maps a host key's type to the algorithms that ask a server for
+// that key; "" leaves the choice to the library.
+var hostKeyAlgos = map[string][]string{
+	ssh.KeyAlgoED25519:  {ssh.KeyAlgoED25519},
+	ssh.KeyAlgoECDSA256: {ssh.KeyAlgoECDSA256},
+	ssh.KeyAlgoECDSA384: {ssh.KeyAlgoECDSA384},
+	ssh.KeyAlgoECDSA521: {ssh.KeyAlgoECDSA521},
+	ssh.KeyAlgoRSA:      {ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA},
+}
+
+var hostKeyTypes = []string{ssh.KeyAlgoED25519, ssh.KeyAlgoECDSA256, ssh.KeyAlgoRSA, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521}
+
 func (s *panelServer) fleetClient(n topoNode) (*ssh.Client, error) {
 	s.fleetMu.Lock()
 	c := s.fleetConns[n.ID]
@@ -257,21 +271,41 @@ func (s *panelServer) fleetClient(n topoNode) (*ssh.Client, error) {
 		return nil, err
 	}
 	want := n.HostKey
-	cfg := &ssh.ClientConfig{
-		User: firstNonEmpty(n.SSHUser, "root"), Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		Timeout: 15 * time.Second,
-		HostKeyCallback: func(_ string, _ net.Addr, k ssh.PublicKey) error {
-			if want != "" && ssh.FingerprintSHA256(k) != want {
-				return errors.New("کلید میزبان سرور عوض شده است (سرور دوباره نصب شده؟)؛ سرور را دوباره اضافه کنید")
-			}
-			return nil
-		},
-	}
 	port := n.SSHPort
 	if port == 0 {
 		port = 22
 	}
-	c, err = ssh.Dial("tcp", net.JoinHostPort(n.IP, strconv.Itoa(port)), cfg)
+	dial := func(keyType string) (*ssh.Client, error) {
+		return ssh.Dial("tcp", net.JoinHostPort(n.IP, strconv.Itoa(port)), &ssh.ClientConfig{
+			User: firstNonEmpty(n.SSHUser, "root"), Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
+			Timeout: 15 * time.Second, HostKeyAlgorithms: hostKeyAlgos[keyType],
+			HostKeyCallback: func(_ string, _ net.Addr, k ssh.PublicKey) error {
+				if want != "" && ssh.FingerprintSHA256(k) != want {
+					return errHostKeyChanged
+				}
+				return nil
+			},
+		})
+	}
+	c, err = dial(n.HostKeyType)
+	if errors.Is(err, errHostKeyChanged) {
+		// A server has several host keys, and which one it shows first can
+		// change (an sshd upgrade, a key type added). Ask for each type in
+		// turn: the connection still goes through only with the pinned key.
+		for _, kt := range hostKeyTypes {
+			if kt == n.HostKeyType {
+				continue
+			}
+			c2, err2 := dial(kt)
+			if errors.Is(err2, errHostKeyChanged) || (err2 != nil && strings.Contains(err2.Error(), "no common algorithm for host key")) {
+				continue // another key, or no key of this type
+			}
+			if c, err = c2, err2; err == nil {
+				s.setNode(n.ID, func(x *topoNode) { x.HostKeyType = kt })
+			}
+			break
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +378,7 @@ func mergeServerOwned(in *topology, old topology) {
 	for i := range in.Nodes {
 		n := &in.Nodes[i]
 		o, ok := on[n.ID]
-		n.State, n.Error, n.Facts, n.HostKey, n.AddedAt = o.State, o.Error, o.Facts, o.HostKey, o.AddedAt
+		n.State, n.Error, n.Facts, n.HostKey, n.HostKeyType, n.AddedAt = o.State, o.Error, o.Facts, o.HostKey, o.HostKeyType, o.AddedAt
 		if ok && o.State != "" {
 			n.IP, n.SSHUser, n.SSHPort = o.IP, o.SSHUser, o.SSHPort
 		}
@@ -556,7 +590,7 @@ func (s *panelServer) handleFleetAdd(w http.ResponseWriter, r *http.Request) {
 			return errors.New("رمز یا کلید SSH سرور را وارد کنید")
 		}
 		if !same {
-			n.HostKey = ""
+			n.HostKey, n.HostKeyType = "", ""
 		}
 		n.Kind, n.IP, n.SSHUser, n.SSHPort = req.Kind, req.IP, req.SSHUser, req.SSHPort
 		if strings.TrimSpace(req.Label) != "" {
@@ -739,7 +773,7 @@ grep -qF "$(echo "$L" | awk '{print $2}')" ~/.ssh/authorized_keys || echo "$L" >
 			failed(i, "نوشتن authorized_keys ناموفق بود: "+err.Error())
 			return
 		}
-		s.setNode(node.ID, func(n *topoNode) { n.HostKey = node.HostKey })
+		s.setNode(node.ID, func(n *topoNode) { n.HostKey, n.HostKeyType = node.HostKey, "" })
 		s.dropFleetConn(node.ID)
 		kx := fleetExecFor(s, node)
 		if _, err := runOut(ctx, kx, "true"); err != nil {
@@ -906,6 +940,7 @@ type nodeTunnel struct {
 	Active   string  `json:"active"`
 	Carriers int     `json:"carriers"`
 	RTT      float64 `json:"rtt_ms,omitempty"`
+	Bytes    uint64  `json:"bytes,omitempty"` // moved since the relay started
 }
 
 type nodeStats struct {
@@ -922,6 +957,9 @@ type nodeStats struct {
 	Tx        float64      `json:"tx"`
 	Tunnels   []nodeTunnel `json:"tunnels"`
 	Kernel    string       `json:"kernel,omitempty"` // kernel tunnel unit state, "" when none
+	// bytes through each kernel peer's interface (rx+tx), by the peer's public
+	// IP, since the interface was last created
+	KernelPeers map[string]uint64 `json:"kernel_peers,omitempty"`
 }
 
 type rawSample struct {
@@ -949,6 +987,11 @@ for f in /etc/Midos-tunnel/tunnels/*.json; do
   echo "tun $n $a $j"
 done
 [ -f /etc/Midos-tunnel/config ] && echo "kernel $(systemctl is-active Midos-tunnel.service 2>/dev/null)"
+[ -f /etc/Midos-tunnel/config ] && awk -F= '/^PEER_[0-9]+_(IP|IFACE)=/ { split($1, k, "_"); gsub(/["\047]/, "", $2); v[k[2] " " k[3]] = $2; n[k[2]] = 1 }
+  END { for (i in n) print v[i " IP"], v[i " IFACE"] }' /etc/Midos-tunnel/config | while read -r ip ifc; do
+  s=/sys/class/net/$ifc/statistics
+  [ -n "$ifc" ] && [ -r "$s/rx_bytes" ] && echo "kif $ip $(cat "$s/rx_bytes") $(cat "$s/tx_bytes")"
+done
 true
 `
 
@@ -1005,6 +1048,7 @@ func parseStats(out string, prev *rawSample, now time.Time) (nodeStats, rawSampl
 				var d statsDoc
 				if json.Unmarshal([]byte(strings.Join(f[3:], " ")), &d) == nil {
 					t.Carriers = len(d.Carriers)
+					t.Bytes = bytesFromStats(&d)
 					for _, c := range d.Carriers {
 						if c.RTTms > 0 && (t.RTT == 0 || c.RTTms < t.RTT) {
 							t.RTT = c.RTTms
@@ -1013,6 +1057,13 @@ func parseStats(out string, prev *rawSample, now time.Time) (nodeStats, rawSampl
 				}
 			}
 			st.Tunnels = append(st.Tunnels, t)
+		case "kif":
+			if len(f) == 4 {
+				if st.KernelPeers == nil {
+					st.KernelPeers = map[string]uint64{}
+				}
+				st.KernelPeers[f[1]] = u64(f[2]) + u64(f[3])
+			}
 		case "kernel":
 			if len(f) == 2 {
 				st.Kernel = f[1]
@@ -1043,11 +1094,17 @@ func (s *panelServer) fleetLoop() {
 	t := time.NewTicker(fleetSampleEvery)
 	defer t.Stop()
 	s.fleetSample()
-	for range t.C {
+	last := time.Now()
+	for now := range t.C {
 		if time.Since(time.Unix(s.fleetSeen.Load(), 0)) > fleetIdleAfter {
-			continue
+			// nobody is looking: sample only as often as the traffic count
+			// needs, and only while there are fleet tunnels to count
+			if now.Sub(last) < usageInterval || len(usageCables(s.loadTopology())) == 0 {
+				continue
+			}
 		}
 		s.fleetSample()
+		last = time.Now()
 	}
 }
 
@@ -1102,6 +1159,7 @@ func (s *panelServer) fleetSample() {
 		}(n)
 	}
 	wg.Wait()
+	s.recordFleetUsage(t)
 }
 
 type fleetView struct {

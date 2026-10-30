@@ -568,10 +568,16 @@ var pingSummaryRE = regexp.MustCompile(`([\d.]+)% packet loss`)
 var pingRTTRE = regexp.MustCompile(`= ([\d.]+)/([\d.]+)/([\d.]+)/`)
 
 func (s *panelServer) icmpPing(host string) pingResult {
-	res := pingResult{Target: host, Kind: "icmp", Sent: 10}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	out, _ := s.run(ctx, "ping", "-n", "-q", "-c", "10", "-i", "0.3", "-W", "2", host)
+	return parsePing(host, out)
+}
+
+// parsePing reads the summary of "ping -q -c 10"; the route test also runs it
+// on fleet servers.
+func parsePing(host string, out []byte) pingResult {
+	res := pingResult{Target: host, Kind: "icmp", Sent: 10}
 	if m := pingSummaryRE.FindSubmatch(out); m != nil {
 		res.Lost, _ = strconv.ParseFloat(string(m[1]), 64)
 	} else {
@@ -600,6 +606,11 @@ func tcpConnectTest(addr string) pingResult {
 		times = append(times, float64(time.Since(t0).Microseconds())/1000)
 		_ = c.Close()
 	}
+	return connectStats(res, times)
+}
+
+// connectStats fills in loss and timings from the handshakes that succeeded.
+func connectStats(res pingResult, times []float64) pingResult {
 	res.Lost = 100 * float64(res.Sent-len(times)) / float64(res.Sent)
 	if len(times) > 0 {
 		sort.Float64s(times)

@@ -13,6 +13,8 @@ export const NODE_STATE = {
   error: ['bad', 'خطا در نصب'],
   '': ['', 'اضافه نشده'],
 };
+export const KERNEL_MODES = [['esp', 'ESP (IPsec)'], ['espudp', 'ESP روی UDP'], ['gre', 'MOI'], ['fou', 'FOU'], ['ipsec', 'IPsec کامل']];
+export const STATE_TEXT = { draft: 'اعمال‌نشده', up: 'متصل', warn: 'فعال، بدون حامل', down: 'خطا', off: 'متوقف', missing: 'تانل پیدا نشد' };
 export const STEP_ICON = { run: '◌', ok: '✓', bad: '✕', warn: '!', skip: '–' };
 
 export const roleOf = (n, selfRole) => (n.kind === 'self' ? selfRole : n.kind);
@@ -55,3 +57,18 @@ export function cableKindText(l, kernelModes) {
 }
 
 export const pct = (used, total) => (total ? (100 * used) / total : 0);
+
+// fleetTunnels lists the applied cables between two servers other than this
+// one. Those tunnels live on the two servers, so the local list (/api/tunnels)
+// never sees them; their health comes from the fleet's live samples instead.
+export function fleetTunnels(fleet) {
+  if (!fleet || !fleet.nodes) return [];
+  const byId = Object.fromEntries(fleet.nodes.map((n) => [n.id, n]));
+  return (fleet.links || [])
+    .filter((l) => l.tunnel && byId[l.a] && byId[l.b] && byId[l.a].kind !== 'self' && byId[l.b].kind !== 'self')
+    .map((l) => {
+      const [iran, kharej] = byId[l.a].role === 'kharej' ? [byId[l.b], byId[l.a]] : [byId[l.a], byId[l.b]];
+      return { id: l.id, name: l.kind === 'kernel' ? 'kernel' : l.tunnel, from: nodeName(iran), to: nodeName(kharej),
+        kind: cableKindText(l, KERNEL_MODES), st: cableState(l, byId), rtt: cableRtt(l, byId) };
+    });
+}

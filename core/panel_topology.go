@@ -31,6 +31,9 @@ type topoNode struct {
 	Error   string     `json:"error,omitempty"`
 	Facts   *nodeFacts `json:"facts,omitempty"`
 	HostKey string     `json:"host_key,omitempty"` // SHA256 fingerprint pinned on the first login
+	// the pinned key's type (ssh-rsa, ssh-ed25519, ...), found when the server
+	// starts offering another of its host keys first; "" until then
+	HostKeyType string `json:"host_key_type,omitempty"`
 	AddedAt int64      `json:"added_at,omitempty"`
 }
 

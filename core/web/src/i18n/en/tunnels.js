@@ -176,4 +176,8 @@ export default {
   'بدون آمار': 'No stats',
   'بدون حامل': 'No carrier',
   'ویرایش {id}': 'Edit {id}',
+
+  // tunnels the network designer built between two other servers (FleetTunnelRow)
+  'شبکه': 'Network',
+  'تانل‌های بین سرورهای دیگر': 'Tunnels between other servers',
 };

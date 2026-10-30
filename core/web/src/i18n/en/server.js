@@ -98,6 +98,7 @@ export const patterns = [
   [/^ترنسپورت (".*") برای کابل پشتیبانی نمی‌شود$/, 'Transport $1 is not supported for cables'],
   [/^به‌روزرسانی باینری روی «(.+)» ناموفق بود$/, 'Updating the binary on “$1” failed'],
   [/^نصب تانل روی «(.+)» ناموفق بود$/, 'Installing the tunnel on “$1” failed'],
+  [/^تست از «(.+)» اجرا نشد: ([\s\S]*)$/, 'The test from “$1” did not run: $2'],
   [/^IP سرور ایران «(.+)» معتبر نیست$/, 'The IP of Iran server “$1” is not valid'],
   [/^IP سرور «(.+)» معتبر نیست$/, 'The IP of server “$1” is not valid'],
   [/^ساخت تانل کرنلی روی «(.+)» ناموفق بود$/, 'Building the kernel tunnel on “$1” failed'],

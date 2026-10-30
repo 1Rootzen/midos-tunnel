@@ -42,7 +42,7 @@ Run it as root on a Linux server. It asks nothing, shows a progress bar, and end
 | ⚡ **Built for bad links** | Several parallel carriers per tunnel, fallback endpoints, speed presets, UDP forwarding and PROXY protocol v2 so services see the user's real IP. |
 | 🖥️ **Mother server & fleet** | Add Iran and abroad servers by IP and root password (used once). Each one is updated, gets every prerequisite, the tunnel binary and a benchmark automatically, then shows live CPU / RAM / disk / network on its card. |
 | 🗺️ **3D network designer** | Draw servers and cables (one-to-one or one-to-many) and apply them; the tunnels are built on both ends for you. |
-| 📊 **Operations** | Traffic charts and usage limits, health checks with one-click repair, route speed test, per-country benchmark, audit log, Telegram alerts, watchdog webhook, backup / restore. |
+| 📊 **Operations** | Traffic for every tunnel (kernel and server-to-server ones included) with usage limits, health checks with one-click repair, route test from any of your servers, per-country benchmark, audit log, Telegram alerts, watchdog webhook, backup / restore. |
 | ⬆️ **Safe updates** | One-click update from GitHub releases with SHA-256 verification and rollback. |
 
 ### Screenshots
@@ -82,7 +82,7 @@ The installer installs the system packages, downloads the `midos-tunnel` binary 
 
 | Variable | Effect |
 |---|---|
-| `MIDOS_VERSION=v2.6.0` | install a specific release instead of the latest |
+| `MIDOS_VERSION=v2.6.1` | install a specific release instead of the latest |
 | `MIDOS_MIRROR=https://…` | download the release files from a mirror |
 | `MIDOS_PANEL_PORT=2053` | panel port on first install (random otherwise) |
 | `MIDOS_NO_KERNEL=1` | skip the kernel-tunnel base |
@@ -151,7 +151,7 @@ The panel shows a small sponsor banner at the top; that is how this free project
 | ⚡ **مناسب مسیرهای ضعیف** | چند حامل موازی برای هر تانل، مسیرهای پشتیبان، پریست سرعت، انتقال UDP و پروتکل PROXY v2 تا سرویس‌ها IP واقعی کاربر را ببینند. |
 | 🖥️ **سرور مادر و ناوگان** | سرورهای ایران و خارج را با IP و رمز root (فقط یک بار) اضافه کنید. هر سرور خودکار به‌روز می‌شود، همهٔ پیش‌نیازها و باینری تانل رویش نصب و بنچمارک می‌شود و منابع زنده‌اش (CPU، RAM، دیسک، شبکه) روی کارتش دیده می‌شود. |
 | 🗺️ **طراحی شبکهٔ سه‌بعدی** | سرورها و کابل‌ها را بکشید (دو به دو یا یک به چند) و اعمال کنید؛ تانل روی هر دو طرف ساخته می‌شود. |
-| 📊 **مدیریت و پایش** | نمودار ترافیک و سقف مصرف، بررسی سلامت با تعمیر یک‌کلیکی، تست سرعت مسیر، بنچمارک کشوربه‌کشور، گزارش ممیزی، هشدار تلگرام، وبهوک واچ‌داگ، پشتیبان‌گیری و بازیابی. |
+| 📊 **مدیریت و پایش** | ترافیک همهٔ تانل‌ها (از جمله کرنلی و بین سرورها) و سقف مصرف، بررسی سلامت با تعمیر یک‌کلیکی، تست مسیر از هر کدام از سرورها، بنچمارک کشوربه‌کشور، گزارش ممیزی، هشدار تلگرام، وبهوک واچ‌داگ، پشتیبان‌گیری و بازیابی. |
 | ⬆️ **به‌روزرسانی امن** | به‌روزرسانی یک‌کلیکی از ریلیزهای گیت‌هاب با بررسی SHA-256 و امکان بازگشت به نسخهٔ قبل. |
 
 ### تصاویر
@@ -185,7 +185,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/1Rootzen/midos-tunnel/main/u
 
 | متغیر | کاربرد |
 |---|---|
-| `MIDOS_VERSION=v2.6.0` | نصب یک نسخهٔ مشخص به‌جای آخرین نسخه |
+| `MIDOS_VERSION=v2.6.1` | نصب یک نسخهٔ مشخص به‌جای آخرین نسخه |
 | `MIDOS_MIRROR=https://…` | دانلود فایل‌های ریلیز از یک میرور |
 | `MIDOS_PANEL_PORT=2053` | پورت پنل در نصب اول (در غیر این صورت تصادفی) |
 | `MIDOS_NO_KERNEL=1` | آماده نکردن پایهٔ تانل کرنلی |

@@ -22,7 +22,7 @@ export const CABLE = {
 };
 // a reverse tunnel is stored as a direct cable that dials the other way
 export const cableType = (l) => (l.kind === 'direct' && l.reverse ? 'reverse' : l.kind);
-export const KERNEL_MODES = [['esp', 'ESP (IPsec)'], ['espudp', 'ESP روی UDP'], ['gre', 'MOI'], ['fou', 'FOU'], ['ipsec', 'IPsec کامل']];
+export { KERNEL_MODES } from '../lib/fleet.js';
 export const snap = (v) => Math.round(v / 20) * 20;
 
 function el(tag, attrs, parent) {
