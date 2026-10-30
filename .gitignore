@@ -1,0 +1,24 @@
+# Allow-list: everything in this folder is private unless listed below.
+/*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/LICENSE
+!/install.sh
+!/uninstall.sh
+!/Midos-tunnel.sh
+!/docs/
+!/core/
+
+# build output and local files inside the public tree
+/core/midos-tunnel
+/core/midos-veil
+/core/midos-tunnel-*
+/core/midos-veil-*
+/core/*.exe
+/core/*.test
+/core/.tmp
+/core/web/node_modules/
+/core/web/dist/
+*.out
+*.log

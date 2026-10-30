@@ -1,0 +1,70 @@
+TERM environment variable not set.
+-------------------- A Bench.sh Script By Teddysun -------------------
+ Version            : [0;31;32mv2026-01-31[0m
+ Usage              : [0;31;31mwget -qO- bench.sh | bash[0m
+----------------------------------------------------------------------
+ CPU Model          : [0;31;36mIntel(R) Xeon(R) CPU E5-2697 v4 @ 2.30GHz[0m
+ CPU Cores          : [0;31;36m2 @ 2297.312 MHz[0m
+ CPU Cache          : [0;31;36m16384 KB[0m
+ AES-NI             : [0;31;32m✓ Enabled[0m
+ VM-x/AMD-V         : [0;31;32m✓ Enabled[0m
+ Total Disk         : [0;31;33m19.3 GB[0m [0;31;36m(2.7 GB Used)[0m
+ Total RAM          : [0;31;33m3.8 GB[0m [0;31;36m(585.8 MB Used)[0m
+ System Uptime      : [0;31;36m0 days, 23 hour 53 min[0m
+ Load Average       : [0;31;36m0.19, 0.13, 0.10[0m
+ OS                 : [0;31;36mUbuntu 26.04.1 LTS[0m
+ Arch               : [0;31;36mx86_64 (64 Bit)[0m
+ Kernel             : [0;31;36m7.0.0-34-generic[0m
+ TCP Congestion Ctrl: [0;31;33mbbr[0m
+ Virtualization     : [0;31;36mKVM[0m
+ IPv4/IPv6          : [0;31;32m✓ Online[0m / [0;31;31m✗ Offline[0m
+ Organization       : [0;31;36m{
+  "status": 429,
+  "error": {
+    "title": "Rate limit hit",
+    "message": "Sign up at ipinfo.io"
+  }
+}[0m
+ Location           : [0;31;36m{
+  "status": 429,
+  "error": {
+    "title": "Rate limit hit",
+    "message": "Sign up at ipinfo.io"
+  }
+} / {
+  "status": 429,
+  "error": {
+    "title": "Rate limit hit",
+    "message": "Sign up at ipinfo.io"
+  }
+}[0m
+ Region             : [0;31;33m{
+  "status": 429,
+  "error": {
+    "title": "Rate limit hit",
+    "message": "Sign up at ipinfo.io"
+  }
+}[0m
+----------------------------------------------------------------------
+ I/O Speed(1st run) : [0;31;33m687 MB/s[0m
+ I/O Speed(2nd run) : [0;31;33m1.4 GB/s[0m
+ I/O Speed(3rd run) : [0;31;33m1.5 GB/s[0m
+ I/O Speed(average) : [0;31;33m1218.9 MB/s[0m
+----------------------------------------------------------------------
+ Node Name        Upload Speed      Download Speed      Latency     
+[0;33m Speedtest.net    [0;32m8820.22 Mbps      [0;31m8969.97 Mbps        [0;36m0.57 ms     [0m
+[0;33m Los Angeles, US  [0;32m991.69 Mbps       [0;31m236.01 Mbps         [0;36m332.25 ms   [0m
+[0;33m Dallas, US       [0;32m1618.90 Mbps      [0;31m1177.82 Mbps        [0;36m231.10 ms   [0m
+[0;33m Montreal, CA     [0;32m481.17 Mbps       [0;31m1484.13 Mbps        [0;36m203.01 ms   [0m
+[0;33m Paris, FR        [0;32m4078.85 Mbps      [0;31m5062.47 Mbps        [0;36m135.64 ms   [0m
+[0;33m Amsterdam, NL    [0;32m690.19 Mbps       [0;31m4029.50 Mbps        [0;36m111.27 ms   [0m
+[0;33m Suzhou, CN       [0;31mTest failed       [0m
+[0;33m Ningbo, CN       [0;31mTest failed       [0m
+[0;33m Hong Kong, CN    [0;32m238.18 Mbps       [0;31m2751.15 Mbps        [0;36m259.56 ms   [0m
+[0;33m Singapore, SG    [0;32m1750.62 Mbps      [0;31m2874.88 Mbps        [0;36m268.94 ms   [0m
+[0;33m Taipei, CN       [0;31mTest failed       [0m
+[0;33m Tokyo, JP        [0;31mTest failed       [0m
+----------------------------------------------------------------------
+ Finished in        : 5 min 42 sec
+ Timestamp          : 2026-10-28 22:45:19 +0330
+----------------------------------------------------------------------

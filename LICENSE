@@ -1,0 +1,33 @@
+Midos Tunnel — Source-Available License (v1)
+Copyright (c) 2026 Midos Tunnel
+
+Persian summary / خلاصهٔ فارسی:
+  سورس باز و قابل مطالعه و تغییر است. تنها شرط اصلی: بنر تبلیغاتی/حامی که در
+  بالای پنل نمایش داده می‌شود باید در هر نسخه‌ای که منتشر یا روی سروری اجرا و به
+  دیگران ارائه می‌کنید، دست‌نخورده و قابل مشاهده باقی بماند. حذف، پنهان‌سازی یا
+  جایگزینی آن مجاز نیست. محتوای بنر از سرور پروژه گرفته می‌شود.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated files (the "Software"), to use, copy, modify, and
+distribute the Software, subject to the following conditions:
+
+1. ATTRIBUTION / SPONSOR BANNER (the main condition).
+   The Software displays a sponsor banner across the top of its web panel. Any
+   distribution of the Software, and any public or multi-user deployment of it
+   (including a hosted service offered to others), MUST keep this banner:
+     (a) present on every panel page where the upstream Software shows it;
+     (b) visible and not hidden, collapsed, covered, shrunk to be unreadable,
+         or disabled by default; and
+     (c) fetching its content from the project's configured source, unchanged.
+   Removing, replacing, or neutralising the banner or the code that displays and
+   loads it is not permitted. Private, single-operator use for your own servers
+   is unrestricted and may configure the banner's content source.
+
+2. The copyright notice and this license shall be kept in all copies or
+   substantial portions of the Software.
+
+3. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE
+   USE OF THE SOFTWARE.
