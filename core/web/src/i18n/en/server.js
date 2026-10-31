@@ -48,6 +48,7 @@ export default {
   // fleet: install steps
   'اتصال SSH و بررسی دسترسی root': 'SSH connection and root check',
   'کاربر SSH باید root باشد': 'The SSH user must be root',
+  'نصب با ری‌استارت پنل نیمه‌کاره ماند؛ دوباره نصب کنید': 'The install was cut short when the panel restarted; install again',
   'نصب کلید سرور مادر': "Installing the mother server's key",
   'رمز SSH ذخیره نمی‌شود؛ مدیریت با کلید انجام می‌شود': 'The SSH password is not stored; the server is managed with a key',
   'خواندن مشخصات سرور': "Reading the server's specs",

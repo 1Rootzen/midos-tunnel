@@ -34,7 +34,7 @@ type topoNode struct {
 	// the pinned key's type (ssh-rsa, ssh-ed25519, ...), found when the server
 	// starts offering another of its host keys first; "" until then
 	HostKeyType string `json:"host_key_type,omitempty"`
-	AddedAt int64      `json:"added_at,omitempty"`
+	AddedAt     int64  `json:"added_at,omitempty"`
 }
 
 type topoLink struct {

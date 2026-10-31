@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -9,6 +10,7 @@ import (
 	"errors"
 	"net"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -67,29 +69,28 @@ func TestFleetClientFindsPinnedKeyType(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c, err := p.s.fleetClient(node)
+	dl := func() time.Time { return time.Now().Add(10 * time.Second) }
+	c, kt, err := p.s.fleetDial(context.Background(), node, dl())
 	if err != nil {
 		t.Fatalf("pinned RSA key not found: %v", err)
 	}
-	p.s.dropFleetConn(node.ID)
-	_ = c
+	c.Close()
 	got, _ := nodeByID(p.s.loadTopology(), "k1")
-	if got.HostKeyType != ssh.KeyAlgoRSA {
-		t.Fatalf("key type not remembered: %q", got.HostKeyType)
+	if kt != ssh.KeyAlgoRSA || got.HostKeyType != ssh.KeyAlgoRSA {
+		t.Fatalf("key type not remembered: %q / %q", kt, got.HostKeyType)
 	}
 
 	// the remembered type is asked for first next time
-	if c, err := p.s.fleetClient(got); err != nil {
+	if c, _, err := p.s.fleetDial(context.Background(), got, dl()); err != nil {
 		t.Fatalf("second dial: %v", err)
 	} else {
 		c.Close()
 	}
-	p.s.dropFleetConn(node.ID)
 
 	// a key the server does not have is still refused
 	stranger := node
 	stranger.ID, stranger.HostKey = "k2", "SHA256:not-this-server"
-	if _, err := p.s.fleetClient(stranger); !errors.Is(err, errHostKeyChanged) {
+	if _, _, err := p.s.fleetDial(context.Background(), stranger, dl()); !errors.Is(err, errHostKeyChanged) {
 		t.Fatalf("an unknown key must be refused, got %v", err)
 	}
 }

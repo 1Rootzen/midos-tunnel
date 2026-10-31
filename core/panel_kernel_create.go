@@ -307,94 +307,36 @@ func sshAuth(password, key string) ([]ssh.AuthMethod, error) {
 	return auths, nil
 }
 
-// sshDial opens an SSH connection to one of the operator's own servers.
-func sshDial(tgt sshTarget) (*ssh.Client, error) {
-	auths, err := sshAuth(tgt.Password, tgt.Key)
-	if err != nil {
-		return nil, err
-	}
-	port := tgt.Port
-	if port == 0 {
-		port = 22
-	}
-	// The operator is connecting to their own server; there is no stored host
-	// key to pin against on a first set-up, so the key is accepted as given.
-	cfg := &ssh.ClientConfig{
-		User:            tgt.User,
-		Auth:            auths,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         20 * time.Second,
-	}
-	addr := net.JoinHostPort(tgt.Host, strconv.Itoa(port))
-	client, err := ssh.Dial("tcp", addr, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("connect %s: %w", addr, err)
-	}
-	return client, nil
-}
-
 // sshRun runs one command on a remote server and returns its combined output.
 func sshRun(ctx context.Context, tgt sshTarget, cmd string) ([]byte, error) {
-	client, err := sshDial(tgt)
+	ex, err := targetExec(tgt)
 	if err != nil {
 		return nil, err
 	}
-	defer client.Close()
-	sess, err := client.NewSession()
-	if err != nil {
-		return nil, err
-	}
-	defer sess.Close()
-	type result struct {
-		out []byte
-		err error
-	}
-	done := make(chan result, 1)
-	go func() {
-		out, err := sess.CombinedOutput(cmd)
-		done <- result{out, err}
-	}()
-	select {
-	case r := <-done:
-		return r.out, r.err
-	case <-ctx.Done():
-		_ = sess.Close()
-		return nil, ctx.Err()
-	}
+	var out bytes.Buffer
+	err = ex.Run(ctx, cmd, nil, &out)
+	return out.Bytes(), err
 }
 
 func sshProvision(ctx context.Context, tgt sshTarget, script []byte, env []envKV) ([]byte, error) {
-	client, err := sshDial(tgt)
+	ex, err := targetExec(tgt)
 	if err != nil {
 		return nil, err
 	}
-	defer client.Close()
 
-	// 1) copy the installer over the session's stdin
-	up, err := client.NewSession()
-	if err != nil {
-		return nil, err
-	}
-	up.Stdin = bytes.NewReader(script)
+	// 1) copy the installer over the command's stdin
 	remotePath := "/usr/local/sbin/Midos-tunnel.sh"
-	if out, err := up.CombinedOutput("cat > " + remotePath + " && chmod +x " + remotePath); err != nil {
-		up.Close()
-		return out, fmt.Errorf("copy installer: %w", err)
+	var up bytes.Buffer
+	if err := ex.Run(ctx, "cat > "+remotePath+" && chmod +x "+remotePath, bytes.NewReader(script), &up); err != nil {
+		return up.Bytes(), fmt.Errorf("copy installer: %w", err)
 	}
-	up.Close()
 
 	// 2) run provision with the environment inline
-	run, err := client.NewSession()
-	if err != nil {
-		return nil, err
+	var out bytes.Buffer
+	if err := ex.Run(ctx, envPrefix(env)+" bash "+remotePath+" provision", nil, &out); err != nil {
+		return out.Bytes(), fmt.Errorf("remote provision: %w", err)
 	}
-	defer run.Close()
-	cmd := envPrefix(env) + " bash " + remotePath + " provision"
-	out, err := run.CombinedOutput(cmd)
-	if err != nil {
-		return out, fmt.Errorf("remote provision: %w", err)
-	}
-	return out, nil
+	return out.Bytes(), nil
 }
 
 func (s *panelServer) kernelScript() ([]byte, error) {

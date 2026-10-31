@@ -84,105 +84,63 @@ func (localExec) Run(ctx context.Context, cmd string, stdin io.Reader, out io.Wr
 	return c.Run()
 }
 
-// clientExec runs commands over one already-open SSH connection.
-type clientExec struct{ c *ssh.Client }
-
-func (e clientExec) Run(ctx context.Context, cmd string, stdin io.Reader, out io.Writer) error {
-	return sessionRun(ctx, e.c, cmd, stdin, out)
-}
-
-func sessionRun(ctx context.Context, c *ssh.Client, cmd string, stdin io.Reader, out io.Writer) error {
-	sess, err := c.NewSession()
-	if err != nil {
-		return err
-	}
-	return runSession(ctx, sess, cmd, stdin, out)
-}
-
-// lockedWriter lets a session's stdout and stderr share one writer: the SSH
-// library copies them in two goroutines, and a shared bytes.Buffer would lose
-// output to their concurrent ReadFrom calls.
-type lockedWriter struct {
-	mu sync.Mutex
-	w  io.Writer
-}
-
-func (l *lockedWriter) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.w.Write(p)
-}
-
-func runSession(ctx context.Context, sess *ssh.Session, cmd string, stdin io.Reader, out io.Writer) error {
-	defer sess.Close()
-	w := &lockedWriter{w: out}
-	sess.Stdin, sess.Stdout, sess.Stderr = stdin, w, w
-	done := make(chan error, 1)
-	go func() { done <- sess.Run(cmd) }()
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		_ = sess.Close()
-		return ctx.Err()
-	}
-}
-
-// keyExec reaches a managed server with the mother's key, reusing one pooled
-// connection per server.
-type keyExec struct {
-	s    *panelServer
-	node topoNode
-}
-
-func (e keyExec) Run(ctx context.Context, cmd string, stdin io.Reader, out io.Writer) error {
-	c, err := e.s.fleetClient(e.node)
-	if err != nil {
-		return err
-	}
-	sess, err := c.NewSession()
-	if err != nil {
-		// a pooled connection that went away: dial once more
-		e.s.dropFleetConn(e.node.ID)
-		if c, err = e.s.fleetClient(e.node); err != nil {
-			return err
-		}
-		if sess, err = c.NewSession(); err != nil {
-			return err
-		}
-	}
-	return runSession(ctx, sess, cmd, stdin, out)
-}
-
-// fleetExecFor picks how to run commands on a server; tests replace it.
+// fleetExecFor picks how to run commands on a server; tests replace it. A
+// managed server is reached with the mother's key, one short connection per
+// step (see sshjob.go).
 var fleetExecFor = func(s *panelServer, n topoNode) hostExec {
 	if n.Kind == "self" {
 		return localExec{}
 	}
-	return keyExec{s: s, node: n}
+	var mu sync.Mutex
+	return jobExec{dial: func(ctx context.Context, deadline time.Time) (*ssh.Client, error) {
+		mu.Lock()
+		cur := n
+		mu.Unlock()
+		c, kt, err := s.fleetDial(ctx, cur, deadline)
+		if err == nil {
+			mu.Lock()
+			n.HostKeyType = kt
+			mu.Unlock()
+		}
+		return c, err
+	}}
 }
 
 // fleetBootstrap opens the first, password (or operator key) login to a server
-// and reports its host key fingerprint; tests replace it.
+// and reports its host key fingerprint; tests replace it. Every later
+// connection of the set-up must show the same key.
 var fleetBootstrap = func(tgt sshTarget) (hostExec, string, func(), error) {
 	auths, err := sshAuth(tgt.Password, tgt.Key)
 	if err != nil {
 		return nil, "", nil, err
 	}
+	var mu sync.Mutex
 	var fp string
+	addr := net.JoinHostPort(tgt.Host, strconv.Itoa(tgt.Port))
 	cfg := &ssh.ClientConfig{
-		User: tgt.User, Auth: auths, Timeout: 20 * time.Second,
+		User: tgt.User, Auth: auths,
 		HostKeyCallback: func(_ string, _ net.Addr, k ssh.PublicKey) error {
-			fp = ssh.FingerprintSHA256(k)
+			mu.Lock()
+			defer mu.Unlock()
+			got := ssh.FingerprintSHA256(k)
+			if fp == "" {
+				fp = got
+			} else if got != fp {
+				return errHostKeyChanged
+			}
 			return nil
 		},
 	}
-	addr := net.JoinHostPort(tgt.Host, strconv.Itoa(tgt.Port))
-	c, err := ssh.Dial("tcp", addr, cfg)
-	if err != nil {
+	ex := jobExec{dial: func(ctx context.Context, deadline time.Time) (*ssh.Client, error) {
+		return dialSSHBy(ctx, addr, cfg, deadline)
+	}}
+	// the first login proves the address and the password, and pins the key
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if _, err := ex.op(ctx, "true", nil, 20*time.Second); err != nil {
 		return nil, "", nil, fmt.Errorf("اتصال SSH به %s ناموفق بود: %v", addr, err)
 	}
-	return clientExec{c}, fp, func() { _ = c.Close() }, nil
+	return ex, fp, func() {}, nil
 }
 
 func runOut(ctx context.Context, ex hostExec, cmd string) (string, error) {
@@ -259,75 +217,53 @@ var hostKeyAlgos = map[string][]string{
 
 var hostKeyTypes = []string{ssh.KeyAlgoED25519, ssh.KeyAlgoECDSA256, ssh.KeyAlgoRSA, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521}
 
-func (s *panelServer) fleetClient(n topoNode) (*ssh.Client, error) {
-	s.fleetMu.Lock()
-	c := s.fleetConns[n.ID]
-	s.fleetMu.Unlock()
-	if c != nil {
-		return c, nil
-	}
+// fleetDial opens a fresh connection to a managed server with the mother's
+// key, accepted only with the host key pinned on the first login. It reports
+// the type of that key, to be asked for first next time.
+func (s *panelServer) fleetDial(ctx context.Context, n topoNode, deadline time.Time) (*ssh.Client, string, error) {
 	signer, err := s.fleetSigner()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	want := n.HostKey
 	port := n.SSHPort
 	if port == 0 {
 		port = 22
 	}
+	addr := net.JoinHostPort(n.IP, strconv.Itoa(port))
 	dial := func(keyType string) (*ssh.Client, error) {
-		return ssh.Dial("tcp", net.JoinHostPort(n.IP, strconv.Itoa(port)), &ssh.ClientConfig{
+		return dialSSHBy(ctx, addr, &ssh.ClientConfig{
 			User: firstNonEmpty(n.SSHUser, "root"), Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
-			Timeout: 15 * time.Second, HostKeyAlgorithms: hostKeyAlgos[keyType],
+			HostKeyAlgorithms: hostKeyAlgos[keyType],
 			HostKeyCallback: func(_ string, _ net.Addr, k ssh.PublicKey) error {
 				if want != "" && ssh.FingerprintSHA256(k) != want {
 					return errHostKeyChanged
 				}
 				return nil
 			},
-		})
+		}, deadline)
 	}
-	c, err = dial(n.HostKeyType)
-	if errors.Is(err, errHostKeyChanged) {
-		// A server has several host keys, and which one it shows first can
-		// change (an sshd upgrade, a key type added). Ask for each type in
-		// turn: the connection still goes through only with the pinned key.
-		for _, kt := range hostKeyTypes {
-			if kt == n.HostKeyType {
-				continue
-			}
-			c2, err2 := dial(kt)
-			if errors.Is(err2, errHostKeyChanged) || (err2 != nil && strings.Contains(err2.Error(), "no common algorithm for host key")) {
-				continue // another key, or no key of this type
-			}
-			if c, err = c2, err2; err == nil {
-				s.setNode(n.ID, func(x *topoNode) { x.HostKeyType = kt })
-			}
-			break
+	c, err := dial(n.HostKeyType)
+	if !errors.Is(err, errHostKeyChanged) {
+		return c, n.HostKeyType, err
+	}
+	// A server has several host keys, and which one it shows first can change
+	// (an sshd upgrade, a key type added). Ask for each type in turn: the
+	// connection still goes through only with the pinned key.
+	for _, kt := range hostKeyTypes {
+		if kt == n.HostKeyType {
+			continue
 		}
+		c2, err2 := dial(kt)
+		if errors.Is(err2, errHostKeyChanged) || (err2 != nil && strings.Contains(err2.Error(), "no common algorithm for host key")) {
+			continue // another key, or no key of this type
+		}
+		if err2 == nil {
+			s.setNode(n.ID, func(x *topoNode) { x.HostKeyType = kt })
+		}
+		return c2, kt, err2
 	}
-	if err != nil {
-		return nil, err
-	}
-	s.fleetMu.Lock()
-	if old := s.fleetConns[n.ID]; old != nil {
-		_ = c.Close()
-		c = old
-	} else {
-		s.fleetConns[n.ID] = c
-	}
-	s.fleetMu.Unlock()
-	return c, nil
-}
-
-func (s *panelServer) dropFleetConn(id string) {
-	s.fleetMu.Lock()
-	c := s.fleetConns[id]
-	delete(s.fleetConns, id)
-	s.fleetMu.Unlock()
-	if c != nil {
-		_ = c.Close()
-	}
+	return nil, "", err
 }
 
 // ---------------------------------------------------------------------------
@@ -610,8 +546,6 @@ func (s *panelServer) handleFleetAdd(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.dropFleetConn(node.ID)
-
 	job := &fleetJob{started: time.Now()}
 	s.fleetMu.Lock()
 	s.fleetJobs[node.ID] = job
@@ -774,7 +708,6 @@ grep -qF "$(echo "$L" | awk '{print $2}')" ~/.ssh/authorized_keys || echo "$L" >
 			return
 		}
 		s.setNode(node.ID, func(n *topoNode) { n.HostKey, n.HostKeyType = node.HostKey, "" })
-		s.dropFleetConn(node.ID)
 		kx := fleetExecFor(s, node)
 		if _, err := runOut(ctx, kx, "true"); err != nil {
 			failed(i, "ورود با کلید سرور مادر ناموفق بود (PubkeyAuthentication در sshd خاموش است؟): "+err.Error())
@@ -858,6 +791,26 @@ grep -qF "$(echo "$L" | awk '{print $2}')" ~/.ssh/authorized_keys || echo "$L" >
 	}
 	job.finish(true)
 	s.notify("🖥️ سرور «" + nodeName(node) + "» (" + node.IP + ") به ناوگان اضافه و آماده شد")
+}
+
+// endStaleInstalls fails the installs the panel was running when it stopped,
+// so those servers can be set up again instead of showing "installing" for good.
+func (s *panelServer) endStaleInstalls() {
+	stale := false
+	for _, n := range s.loadTopology().Nodes {
+		stale = stale || n.State == "installing"
+	}
+	if !stale {
+		return
+	}
+	_ = s.updateTopology(func(t *topology) error {
+		for i := range t.Nodes {
+			if t.Nodes[i].State == "installing" {
+				t.Nodes[i].State, t.Nodes[i].Error = "error", "نصب با ری‌استارت پنل نیمه‌کاره ماند؛ دوباره نصب کنید"
+			}
+		}
+		return nil
+	})
 }
 
 // ensureBinary installs this release on a remote server whose binary is missing
@@ -1121,7 +1074,7 @@ func (s *panelServer) fleetSample() {
 		wg.Add(1)
 		go func(n topoNode) {
 			defer wg.Done()
-			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 			defer cancel()
 			ex := fleetExecFor(s, n)
 			s.fleetMu.Lock()
@@ -1138,7 +1091,6 @@ func (s *panelServer) fleetSample() {
 			now := time.Now()
 			var st nodeStats
 			if err != nil {
-				s.dropFleetConn(n.ID)
 				st = nodeStats{At: now.Unix(), Error: "سرور در دسترس نیست: " + err.Error(), Tunnels: []nodeTunnel{}}
 			} else {
 				var cur rawSample
@@ -1802,7 +1754,6 @@ func (s *panelServer) handleFleetRemove(w http.ResponseWriter, r *http.Request) 
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.dropFleetConn(n.ID)
 	s.fleetMu.Lock()
 	delete(s.fleetJobs, n.ID)
 	delete(s.fleetStats, n.ID)
@@ -1822,12 +1773,60 @@ func (s *panelServer) handleFleetRemove(w http.ResponseWriter, r *http.Request) 
 	jsonOK(w, map[string]any{"ok": true, "results": results, "warnings": warn})
 }
 
+// lentBlob is a payload a server fetches from the panel: on routes that hold
+// SSH back, the binary or the kernel installer cannot be sent over it, while
+// the server can download them (see sshjob.go).
+type lentBlob struct {
+	data    []byte
+	expires time.Time
+}
+
+// lendBlob makes data downloadable once, for a few minutes, at a URL with an
+// unguessable token; withdraw ends the loan.
+func (s *panelServer) lendBlob(data []byte) (string, func()) {
+	cfg := s.config()
+	_, port, err := net.SplitHostPort(cfg.Listen)
+	host := publicHost(&cfg)
+	if err != nil || port == "" || host == "" {
+		return "", func() {}
+	}
+	tok := randomToken(16)
+	s.fleetMu.Lock()
+	now := time.Now()
+	for k, b := range s.fleetBlobs {
+		if now.After(b.expires) {
+			delete(s.fleetBlobs, k)
+		}
+	}
+	s.fleetBlobs[tok] = lentBlob{data: data, expires: now.Add(10 * time.Minute)}
+	s.fleetMu.Unlock()
+	url := fmt.Sprintf("https://%s%s/blob/%s", net.JoinHostPort(host, port), cfg.BasePath, tok)
+	return url, func() {
+		s.fleetMu.Lock()
+		delete(s.fleetBlobs, tok)
+		s.fleetMu.Unlock()
+	}
+}
+
+func (s *panelServer) handleBlob(w http.ResponseWriter, r *http.Request) {
+	s.fleetMu.Lock()
+	b, ok := s.fleetBlobs[r.PathValue("token")]
+	s.fleetMu.Unlock()
+	if !ok || time.Now().After(b.expires) {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.Itoa(len(b.data)))
+	_, _ = w.Write(b.data)
+}
+
 // fleetState is the fleet's part of panelServer.
 type fleetState struct {
 	fleetMu    sync.Mutex
 	fleetKey   ssh.Signer
-	fleetConns map[string]*ssh.Client
 	fleetJobs  map[string]*fleetJob
+	fleetBlobs map[string]lentBlob
 	fleetStats map[string]nodeStats
 	fleetPrev  map[string]rawSample
 	fleetOnce  sync.Once
@@ -1837,8 +1836,8 @@ type fleetState struct {
 }
 
 func (f *fleetState) initFleet() {
-	f.fleetConns = map[string]*ssh.Client{}
 	f.fleetJobs = map[string]*fleetJob{}
+	f.fleetBlobs = map[string]lentBlob{}
 	f.fleetStats = map[string]nodeStats{}
 	f.fleetPrev = map[string]rawSample{}
 }

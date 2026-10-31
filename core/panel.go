@@ -401,6 +401,7 @@ func runPanel(path string) error {
 		return err
 	}
 	s := newPanelServer(path, cfg, execRunner)
+	jobLend = s.lendBlob
 	if m := newMigration(execRunner, s.unitDir, cfg.TunnelsDir, true); m.needed() {
 		go func() {
 			err := m.runAll()
@@ -415,6 +416,7 @@ func runPanel(path string) error {
 	s.sys = newSysSampler()
 	go s.sys.loop()
 	go s.tunnelWatcher()
+	s.endStaleInstalls()
 	s.usage = newUsageTracker(filepath.Join(filepath.Dir(path), "usage.json"))
 	go s.usageLoop()
 	s.audit(nil, "panel-start", version)
@@ -468,6 +470,7 @@ func (s *panelServer) routes() http.Handler {
 	mux.HandleFunc("GET "+b+"/peer/{token}", s.handlePeerScript)
 	mux.HandleFunc("GET "+b+"/peer/{token}/config", s.handlePeerConfig)
 	mux.HandleFunc("GET "+b+"/peer/{token}/bin", s.handlePeerBinary)
+	mux.HandleFunc("GET "+b+"/blob/{token}", s.handleBlob)
 
 	mux.HandleFunc("GET "+b+"/api/kernel", s.authed(s.handleKernel))
 	mux.HandleFunc("POST "+b+"/api/kernel/action", s.authed(s.handleKernelAction))

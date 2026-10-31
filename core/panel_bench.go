@@ -92,26 +92,11 @@ var benchRunLocal = func(ctx context.Context, w io.Writer) error {
 }
 
 var benchRunRemote = func(ctx context.Context, tgt sshTarget, w io.Writer) error {
-	client, err := sshDial(tgt)
+	ex, err := targetExec(tgt)
 	if err != nil {
 		return err
 	}
-	defer client.Close()
-	sess, err := client.NewSession()
-	if err != nil {
-		return err
-	}
-	defer sess.Close()
-	sess.Stdout, sess.Stderr = w, w
-	done := make(chan error, 1)
-	go func() { done <- sess.Run(benchCommand) }()
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		_ = sess.Close()
-		return ctx.Err()
-	}
+	return ex.Run(ctx, benchCommand, nil, w)
 }
 
 // ------------------------------------------------------------------ parsing
