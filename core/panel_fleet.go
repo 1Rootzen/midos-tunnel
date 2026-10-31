@@ -33,6 +33,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -323,10 +324,30 @@ func mergeServerOwned(in *topology, old topology) {
 	for _, l := range old.Links {
 		ol[l.ID] = l
 	}
+	seen := map[string]bool{}
 	for i := range in.Links {
 		l := &in.Links[i]
-		o := ol[l.ID]
+		seen[l.ID] = true
+		o, ok := ol[l.ID]
+		if ok && o.Tunnel != "" {
+			// an applied cable changes only through the panel (edit, unlink),
+			// so a page holding an older copy cannot undo an edit
+			*l = o
+			continue
+		}
 		l.Tunnel, l.PSK, l.Slot = o.Tunnel, o.PSK, o.Slot
+	}
+	// nor can it drop an applied cable it has not seen yet (one built from
+	// the tunnel form while the designer was open), as long as both of its
+	// servers are still on the map
+	ids := map[string]bool{}
+	for _, n := range in.Nodes {
+		ids[n.ID] = true
+	}
+	for _, o := range old.Links {
+		if o.Tunnel != "" && !seen[o.ID] && ids[o.A] && ids[o.B] {
+			in.Links = append(in.Links, o)
+		}
 	}
 }
 
@@ -1605,6 +1626,26 @@ func (s *panelServer) handleFleetApply(w http.ResponseWriter, r *http.Request) {
 
 // unlink takes a cable's tunnel off its servers and the cable off the map.
 func (s *panelServer) unlink(ctx context.Context, t topology, l topoLink) ([]stepResult, error) {
+	results, firstErr := s.takeDown(ctx, t, l)
+	err := s.updateTopology(func(t *topology) error {
+		out := t.Links[:0]
+		for _, x := range t.Links {
+			if x.ID != l.ID {
+				out = append(out, x)
+			}
+		}
+		t.Links = out
+		return nil
+	})
+	if firstErr == nil {
+		firstErr = err
+	}
+	return results, firstErr
+}
+
+// takeDown removes a cable's tunnel from its servers and leaves the map as it
+// is. A kernel cable's Iran hub is rebuilt with its other Kharej servers.
+func (s *panelServer) takeDown(ctx context.Context, t topology, l topoLink) ([]stepResult, error) {
 	var results []stepResult
 	add := func(e fleetEnd, out string, err error) {
 		r := stepResult{Step: nodeName(e.node) + " (" + e.host + ")", OK: err == nil, Output: out}
@@ -1656,18 +1697,209 @@ func (s *panelServer) unlink(ctx context.Context, t topology, l topoLink) ([]ste
 			keepErr(err)
 		}
 	}
-	err := s.updateTopology(func(t *topology) error {
-		out := t.Links[:0]
-		for _, x := range t.Links {
-			if x.ID != l.ID {
-				out = append(out, x)
+	return results, firstErr
+}
+
+// cableSettings copies the settings a person chooses for a cable from req onto
+// l; the ends, the id and what the panel set (tunnel, key, slot) stay. Fields
+// that do not apply to the cable's kind are cleared.
+func cableSettings(l, req topoLink) topoLink {
+	l.Kind, l.Ports, l.UDPPorts = req.Kind, req.Ports, req.UDPPorts
+	if l.Kind == "kernel" {
+		l.Mode = firstNonEmpty(req.Mode, "esp")
+		l.Transport, l.Port, l.Reverse, l.Preset, l.Carriers = "", 0, false, "", 0
+		return l
+	}
+	l.Mode = ""
+	l.Transport, l.Port, l.Reverse = firstNonEmpty(req.Transport, "tls"), req.Port, req.Reverse
+	l.Preset, l.Carriers = firstNonEmpty(req.Preset, "balance"), req.Carriers
+	return l
+}
+
+var kernelPortsRE = regexp.MustCompile(`^\d{1,5}(-\d{1,5})?$`)
+
+// checkCable rejects settings that could not be built, before anything on a
+// server is touched.
+func checkCable(l topoLink) error {
+	if len(splitList(l.Ports)) == 0 && len(splitList(l.UDPPorts)) == 0 {
+		return errors.New("حداقل یک پورت منتقل‌شونده وارد کنید")
+	}
+	if l.Kind == "kernel" {
+		if _, err := commonKernelEnv(kernelCreateReq{Mode: l.Mode, PSK: strings.Repeat("x", 16)}); err != nil {
+			return err
+		}
+		for _, p := range append(splitList(l.Ports), splitList(l.UDPPorts)...) {
+			if !kernelPortsRE.MatchString(p) {
+				return fmt.Errorf("پورت %q برای تانل کرنلی معتبر نیست (فقط عدد یا بازه مثل 2000-3000)", p)
 			}
 		}
-		t.Links = out
 		return nil
+	}
+	if l.Port < 0 || l.Port > 65535 || l.Carriers < 0 || l.Carriers > 16 {
+		return errors.New("پورت حامل یا تعداد حامل معتبر نیست")
+	}
+	if _, ok := presets[l.Preset]; !ok {
+		return fmt.Errorf("پریست %q شناخته نیست", l.Preset)
+	}
+	_, _, _, _, err := fleetDirectConfigs(l, "check", "192.0.2.1", "192.0.2.2")
+	return err
+}
+
+// handleFleetEdit changes an applied cable - its ports, transport, direction
+// or kind - and rebuilds its tunnel on both servers. A cable that keeps its
+// kind keeps its tunnel name, so the new settings simply replace the old ones;
+// one that changes kind has its old tunnel taken down first.
+func (s *panelServer) handleFleetEdit(w http.ResponseWriter, r *http.Request) {
+	var req topoLink
+	if err := readJSON(r, &req); err != nil {
+		jsonError(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	t := s.loadTopology()
+	old, ok := linkByID(t, req.ID)
+	if !ok {
+		jsonError(w, http.StatusNotFound, "این کابل پیدا نشد؛ صفحه را تازه کنید")
+		return
+	}
+	if old.Tunnel == "" {
+		jsonError(w, http.StatusBadRequest, "این کابل هنوز اعمال نشده؛ آن را در طراحی شبکه تنظیم و اعمال کنید")
+		return
+	}
+	if req.Kind != "direct" && req.Kind != "kernel" {
+		jsonError(w, http.StatusBadRequest, "نوع کابل باید مستقیم، معکوس یا کرنلی باشد")
+		return
+	}
+	next := cableSettings(old, req)
+	if err := checkCable(next); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	trial := t
+	trial.Links = append([]topoLink{}, t.Links...)
+	for i := range trial.Links {
+		if trial.Links[i].ID == next.ID {
+			trial.Links[i] = next
+		}
+	}
+	if err := checkTopology(&trial); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	for _, id := range []string{next.A, next.B} {
+		if _, err := s.endOf(t, id); err != nil {
+			jsonError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	var results []stepResult
+	if old.Kind != next.Kind {
+		res, err := s.takeDown(ctx, t, old)
+		results = append(results, res...)
+		if err != nil {
+			s.audit(r, "fleet-edit", old.ID+" failed: "+err.Error())
+			jsonError2(w, http.StatusBadGateway, "برداشتن تانل قبلی ناموفق بود: "+err.Error(), results)
+			return
+		}
+		next.Tunnel, next.PSK, next.Slot = "", "", 0
+	}
+	if err := s.updateTopology(func(t *topology) error {
+		for i := range t.Links {
+			if t.Links[i].ID == next.ID {
+				t.Links[i] = next
+			}
+		}
+		return nil
+	}); err != nil {
+		jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	t = s.loadTopology()
+	var res []stepResult
+	var err error
+	if next.Kind == "kernel" {
+		hub := kernelHub(t, next)
+		res, err = s.applyKernel(ctx, t, hub, kernelGroup(t, hub), next)
+	} else {
+		res, err = s.applyDirect(ctx, t, next)
+	}
+	results = append(results, res...)
+	if err != nil {
+		s.audit(r, "fleet-edit", next.ID+" failed: "+err.Error())
+		jsonError2(w, http.StatusBadGateway, err.Error(), results)
+		return
+	}
+	a, _ := nodeByID(t, next.A)
+	b, _ := nodeByID(t, next.B)
+	s.audit(r, "fleet-edit", next.Kind+" "+nodeName(a)+" <-> "+nodeName(b))
+	s.notify("✏️ تانل بین «" + nodeName(a) + "» و «" + nodeName(b) + "» ویرایش و دوباره ساخته شد")
+	jsonOK(w, map[string]any{"ok": true, "results": results})
+}
+
+// handleFleetLinks adds several cables in one go - one Iran server to several
+// Kharej servers - and returns their ids; the page then applies each one.
+// With self_role "iran" the mother itself becomes that Iran server.
+func (s *panelServer) handleFleetLinks(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SelfRole string     `json:"self_role"`
+		Links    []topoLink `json:"links"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		jsonError(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if len(req.Links) == 0 {
+		jsonError(w, http.StatusBadRequest, "حداقل یک سرور خارج انتخاب کنید")
+		return
+	}
+	var ids []string
+	err := s.updateTopology(func(t *topology) error {
+		if req.SelfRole == "iran" && t.SelfRole != "iran" {
+			for _, l := range t.Links {
+				if l.A == "self" || l.B == "self" {
+					return errors.New("نقش این سرور در طراحی شبکه «ایران» نیست و کابل دارد؛ آن را در طراحی شبکه درست کنید")
+				}
+			}
+			t.SelfRole = "iran"
+		}
+		if t.SelfRole == "" {
+			t.SelfRole = "none"
+		}
+		// the map may not hold the mother yet if the designer was never opened
+		hasSelf := false
+		for _, n := range t.Nodes {
+			hasSelf = hasSelf || n.Kind == "self"
+		}
+		if !hasSelf {
+			host, _ := os.Hostname()
+			t.Nodes = append([]topoNode{{ID: "self", Kind: "self", Label: host}}, t.Nodes...)
+		}
+		for _, in := range req.Links {
+			l := cableSettings(topoLink{ID: "l" + randomToken(6), A: in.A, B: in.B}, in)
+			if l.Kind != "direct" && l.Kind != "kernel" {
+				return errors.New("نوع کابل باید مستقیم، معکوس یا کرنلی باشد")
+			}
+			if err := checkCable(l); err != nil {
+				return err
+			}
+			for _, id := range []string{l.A, l.B} {
+				if _, err := s.endOf(*t, id); err != nil {
+					return err
+				}
+			}
+			t.Links = append(t.Links, l)
+			ids = append(ids, l.ID)
+		}
+		return checkTopology(t)
 	})
-	keepErr(err)
-	return results, firstErr
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.audit(r, "fleet-links", strconv.Itoa(len(ids))+" cables")
+	jsonOK(w, map[string]any{"ok": true, "ids": ids})
 }
 
 func (s *panelServer) handleFleetUnlink(w http.ResponseWriter, r *http.Request) {

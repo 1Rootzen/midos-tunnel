@@ -4,6 +4,7 @@
 // cables, and turns pointer input into select / move / cable / pan actions.
 
 import { t } from '../lib/i18n.js';
+import { cableType } from '../lib/fleet.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const C30 = Math.cos(Math.PI / 6), S30 = Math.sin(Math.PI / 6);
@@ -21,7 +22,7 @@ export const CABLE = {
   kernel: { name: 'تانل کرنلی', color: '#f472b6' },
 };
 // a reverse tunnel is stored as a direct cable that dials the other way
-export const cableType = (l) => (l.kind === 'direct' && l.reverse ? 'reverse' : l.kind);
+export { cableType };
 export { KERNEL_MODES } from '../lib/fleet.js';
 export const snap = (v) => Math.round(v / 20) * 20;
 

@@ -15,6 +15,9 @@ export const TRANSPORTS = {
   ssh: { name: 'SSH', help: 'از طریق sshd خودِ سرور مقابل؛ جایی که فقط SSH باز است (نیاز به یوزر/رمز SSH؛ پورت تازه‌ای باز نمی‌شود)' },
 };
 
+// the port a carrier listens on by default, per transport (ICMP has none)
+export const DEF_PORT = { tls: 443, ws: 443, tcp: 8080, stealth: 8443, kcp: 4000, quic: 8443, grpc: 2096, dns: 53 };
+
 export const trName = (k) => (TRANSPORTS[k] || {}).name || k;
 
 // The listening side's address per transport: [config key, transport, label,

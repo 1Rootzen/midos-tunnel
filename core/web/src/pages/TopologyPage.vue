@@ -17,6 +17,7 @@ import FormField from '../components/FormField.vue';
 import GlassWindow from '../components/GlassWindow.vue';
 import AppIcon from '../components/AppIcon.vue';
 import AddServerWindow from '../components/AddServerWindow.vue';
+import CableEditWindow from '../components/CableEditWindow.vue';
 import BenchCard from '../topology/BenchCard.vue';
 import '../styles/topology.css';
 
@@ -36,6 +37,7 @@ const canvas = ref(null);
 const dropping = ref(false);
 const loaded = ref(false);
 const adding = ref(null); // { node, watch? } while the add window is open
+const editCable = ref(''); // the applied cable whose edit window is open
 let engine = null;
 
 const raw = () => toRaw(topo);
@@ -67,6 +69,7 @@ const liveById = () => {
   for (const n of topo.nodes) if (!m[n.id]) m[n.id] = { ...n, role: role(n) };
   return m;
 };
+const CABLE_KEYS = ['kind', 'transport', 'port', 'ports', 'udp_ports', 'reverse', 'preset', 'carriers', 'mode', 'tunnel'];
 const linkState = (l) => cableState(l, liveById());
 const linkRtt = (l) => cableRtt(l, liveById());
 
@@ -90,7 +93,14 @@ async function refresh() {
   const fl = {};
   for (const l of f.links) fl[l.id] = l;
   topo.links = topo.links.filter((l) => !l.tunnel || fl[l.id]);
-  for (const l of topo.links) if (fl[l.id]) l.tunnel = fl[l.id].tunnel || '';
+  // an applied cable changes only on the mother (edit, unlink), so its
+  // settings come from there; one built from the tunnel form appears here
+  for (const v of f.links) {
+    const l = linkById(v.id);
+    if (!l) { if (v.tunnel) topo.links.push({ ...v }); continue; }
+    if (v.tunnel) for (const k of CABLE_KEYS) l[k] = v[k];
+    else l.tunnel = '';
+  }
   if (b) bench.value = { running: b.running || {}, results: b.results || {} };
   redraw();
 }
@@ -234,7 +244,7 @@ function setNodeKind(v) {
 }
 function setLinkKind(v) {
   const l = selLink.value;
-  if (l.tunnel) { toast(t('کابل اعمال‌شده را نمی‌توان تغییر نوع داد؛ حذف و دوباره بکشید'), 'err'); return; }
+  if (l.tunnel) { editCable.value = l.id; return; }
   const kh = role(nodeById(l.a)) === 'kharej' ? l.a : l.b;
   if (v === 'kernel' && topo.links.some((x) => x.kind === 'kernel' && x.id !== l.id && (x.a === kh || x.b === kh))) { toast(t('این سرور خارج کابل کرنلی دیگری دارد'), 'err'); return; }
   l.kind = v === 'kernel' ? 'kernel' : 'direct';
@@ -541,7 +551,8 @@ onBeforeUnmount(() => {
 
         <div class="actions">
           <button v-if="!selLink.tunnel" class="btn primary" :disabled="linkNotReady.length > 0" @click="runJobs([selLink])"><AppIcon name="play" /> {{ $t('اعمال این کابل') }}</button>
-          <button v-else class="btn" @click="runJobs([selLink])"><AppIcon name="redo" /> {{ $t('اعمال دوباره') }}</button>
+          <button v-if="selLink.tunnel" class="btn primary" @click="editCable = selLink.id"><AppIcon name="edit" /> {{ $t('ویرایش این تانل') }}</button>
+          <button v-if="selLink.tunnel" class="btn" @click="runJobs([selLink])"><AppIcon name="redo" /> {{ $t('اعمال دوباره') }}</button>
           <button class="btn danger small" @click="removeSelected"><AppIcon name="trash" /> {{ selLink.tunnel ? $t('حذف کابل و تانل') : $t('حذف کابل') }}</button>
         </div>
         <div v-for="n in linkNotReady" :key="n.id" class="hint warn">{{ $t('سرور «{name}» هنوز اضافه و نصب نشده؛ روی آن کلیک کنید و «افزودن و نصب خودکار» را بزنید.', { name: nodeName(n) }) }}</div>
@@ -550,6 +561,7 @@ onBeforeUnmount(() => {
     </GlassWindow>
 
     <AddServerWindow v-if="adding" :node="adding.node" :watch="adding.watch" @close="adding = null; refresh()" @added="refresh()" />
+    <CableEditWindow v-if="editCable" :id="editCable" @close="editCable = ''" @saved="refresh().catch(() => {})" />
 
     <GlassWindow v-if="jobs.open" :title="$t(jobs.title)" icon="play" :width="700" :closable="jobs.done" @close="jobs.open = false">
       <div class="tp-jobs">

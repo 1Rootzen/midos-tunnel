@@ -72,3 +72,22 @@ export function fleetTunnels(fleet) {
         kind: cableKindText(l, KERNEL_MODES), st: cableState(l, byId), rtt: cableRtt(l, byId) };
     });
 }
+
+export const cableType = (l) => (l.kind === 'direct' && l.reverse ? 'reverse' : l.kind);
+// transports whose carrier rides UDP; the rest open a TCP port
+export const UDP_CARRIERS = ['kcp', 'quic', 'dns'];
+
+// localPorts lists the ports an Iran server opens for one port field
+// ("443, 8443:2053, 8000-8010, 2096=10.0.0.5:2096"): the part before ":" or
+// "=", with ranges expanded. Unreadable entries are skipped; the server
+// rejects them with a proper message.
+export function localPorts(list) {
+  const out = [];
+  for (const e of String(list || '').split(/[\s,،]+/).filter(Boolean)) {
+    const m = /^(\d+)(?:-(\d+))?(?:[:=].*)?$/.exec(e);
+    if (!m) continue;
+    const a = Number(m[1]), b = Number(m[2] || m[1]);
+    for (let p = a; p <= b && p <= 65535 && out.length < 70000; p++) out.push(p);
+  }
+  return out;
+}

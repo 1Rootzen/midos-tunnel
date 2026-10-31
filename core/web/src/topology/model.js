@@ -2,7 +2,7 @@ import { trName } from '../lib/constants.js';
 import { t, i18n } from '../lib/i18n.js';
 import { KERNEL_MODES, CABLE, cableType } from './engine.js';
 
-export const DEF_PORT = { tls: 443, ws: 443, tcp: 8080, stealth: 8443, kcp: 4000, quic: 8443, grpc: 2096, dns: 53 };
+export { DEF_PORT } from '../lib/constants.js';
 // shown through t() where it is rendered
 export { STATE_TEXT } from '../lib/fleet.js';
 

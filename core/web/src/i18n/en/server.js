@@ -44,6 +44,10 @@ export default {
   'این کابل پیدا نشد': 'This cable was not found',
   'این سرور را نمی‌توان حذف کرد': 'This server cannot be removed',
   'اسکریپت نصب روی سرور مادر نیست': 'The install script is not on the mother server',
+  'این کابل هنوز اعمال نشده؛ آن را در طراحی شبکه تنظیم و اعمال کنید': 'This cable is not applied yet; set it up and apply it in the network designer',
+  'نوع کابل باید مستقیم، معکوس یا کرنلی باشد': 'The cable type must be direct, reverse or kernel',
+  'پورت حامل یا تعداد حامل معتبر نیست': 'The carrier port or carrier count is not valid',
+  'نقش این سرور در طراحی شبکه «ایران» نیست و کابل دارد؛ آن را در طراحی شبکه درست کنید': "This server's role in the network designer is not Iran and it has cables; fix that in the designer",
 
   // fleet: install steps
   'اتصال SSH و بررسی دسترسی root': 'SSH connection and root check',
@@ -105,6 +109,11 @@ export const patterns = [
   [/^ساخت تانل کرنلی روی «(.+)» ناموفق بود$/, 'Building the kernel tunnel on “$1” failed'],
   [/^کابل حذف شد ولی پاک‌سازی بعضی سرورها ناموفق بود: ([\s\S]*)$/, 'The cable was removed, but cleaning up some servers failed: $1'],
   [/^کلید سرور مادر از سرور پاک نشد: ([\s\S]*)$/, "The mother server's key was not removed from the server: $1"],
+
+  // editing a cable
+  [/^پورت "(.*)" برای تانل کرنلی معتبر نیست \(فقط عدد یا بازه مثل 2000-3000\)$/, 'Port "$1" is not valid for a kernel tunnel (numbers or ranges like 2000-3000 only)'],
+  [/^پریست "(.*)" شناخته نیست$/, 'Unknown preset "$1"'],
+  [/^برداشتن تانل قبلی ناموفق بود: (.*)$/, 'Removing the old tunnel failed: $1'],
 
   // step labels of tunnel builds
   [/^این سرور \((.+)\)$/, 'This server ($1)'],

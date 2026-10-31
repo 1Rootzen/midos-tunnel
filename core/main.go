@@ -8,7 +8,7 @@ import (
 	"syscall"
 )
 
-var version = "2.6.2"
+var version = "2.6.3"
 
 func main() {
 	// "midos-tunnel panel ..." runs the web panel; anything else is a relay

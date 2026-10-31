@@ -8,6 +8,7 @@ import SegControl from './SegControl.vue';
 import FormField from './FormField.vue';
 import AppIcon from './AppIcon.vue';
 import KernelForm from './KernelForm.vue';
+import MultiForm from './MultiForm.vue';
 import { store } from '../lib/store.js';
 import { t } from '../lib/i18n.js';
 
@@ -29,16 +30,19 @@ const f = reactive({
 });
 if (props.kind === 'kernel') f.direction = 'kernel';
 const endpoints = ref([{ transport: 'tls', server: '' }]);
-// a kernel tunnel (ESP / MOI) is a third kind next to direct and reverse; it is
-// built, not edited, so it is offered only when creating
+// a kernel tunnel (ESP / MOI) and a multi-location tunnel (one Iran server to
+// several Kharej servers) are built by forms of their own, so they are offered
+// only when creating
 const isKernel = computed(() => f.direction === 'kernel');
+const isMulti = computed(() => f.direction === 'multi');
 const DIRECTIONS = computed(() => (editing.value
   ? [['normal', t('مستقیم')], ['reverse', t('معکوس')]]
-  : [['normal', t('مستقیم')], ['reverse', t('معکوس')], ['kernel', t('کرنلی')]]));
+  : [['normal', t('مستقیم')], ['reverse', t('معکوس')], ['kernel', t('کرنلی')], ['multi', t('چند لوکیشن')]]));
 const DIR_HELP = {
   normal: 'سرور ایران به خارج وصل می‌شود (تانل مستقیم).',
   reverse: 'سرور خارج به ایران وصل می‌شود؛ روی خارج هیچ پورت ورودی لازم نیست.',
   kernel: 'تانل در سطح کرنل (ESP / MOI) بدون رله؛ کم‌سربارترین مسیر. هر دو سر خودکار با SSH برپا می‌شوند.',
+  multi: 'یک سرور ایران به چند سرور خارج؛ هر لوکیشن پورت‌های خودش را دارد و همه یک‌جا روی سرورها ساخته می‌شوند.',
 };
 const selfHost = (store.session && store.session.public_host) || '';
 const portOf = (addr) => (addr || '').split(':').pop();
@@ -108,7 +112,7 @@ function build() {
 const preview = computed(() => JSON.stringify(build(), null, 2));
 
 async function submit() {
-  if (isKernel.value) return; // the kernel builder has its own button
+  if (isKernel.value || isMulti.value) return; // those builders have their own buttons
   saving.value = true;
   try {
     const config = build();
@@ -137,18 +141,19 @@ onMounted(async () => {
 <template>
   <div v-if="loading" class="empty"><span class="spin"></span></div>
   <form v-else class="tform" @submit.prevent="submit">
-    <div :class="isKernel ? 'kcore' : 'grid-2'">
+    <div :class="isKernel || isMulti ? 'kcore' : 'grid-2'">
       <div class="card">
         <div class="card-head"><h3><AppIcon name="tunnel" /> {{ $t('پایه') }}</h3><span class="tag">CORE</span></div>
-        <FormField v-if="!editing && !isKernel" :label="$t('نام تانل')" :hint="$t('حروف انگلیسی، عدد، - و _')">
+        <FormField v-if="!editing && !isKernel && !isMulti" :label="$t('نام تانل')" :hint="$t('حروف انگلیسی، عدد، - و _')">
           <input v-model="f.name" type="text" dir="ltr" placeholder="uk-1" required />
         </FormField>
-        <FormField :label="$t('این سرور کجاست؟')" :hint="f.mode === 'client' ? $t('این سرور در ایران است: کاربران به پورت‌های آن وصل می‌شوند.') : $t('این سرور خارج است: سرویس‌ها (xray) روی آن اجرا می‌شوند.')">
+        <FormField v-if="!isMulti" :label="$t('این سرور کجاست؟')" :hint="f.mode === 'client' ? $t('این سرور در ایران است: کاربران به پورت‌های آن وصل می‌شوند.') : $t('این سرور خارج است: سرویس‌ها (xray) روی آن اجرا می‌شوند.')">
           <SegControl v-model="f.mode" :options="[['client', $t('ایران (کاربران)')], ['server', $t('خارج (سرویس‌ها)')]]" />
         </FormField>
         <FormField :label="$t('نوع تانل')" :hint="$t(DIR_HELP[f.direction])">
           <SegControl v-model="f.direction" :options="DIRECTIONS" />
         </FormField>
+        <template v-if="!isMulti">
         <FormField :label="$t('پورت‌های TCP')" :hint="isKernel ? $t('پورت‌هایی که از تانل کرنلی رد می‌شوند؛ مثلاً 443, 8443 (خالی = همه)') : (f.mode === 'client' ? $t('مثال: 443 یا 443:2053 (تغییر شماره) یا 8000-8010 (رنج) یا 443=10.0.0.5:2096 (مقصد دلخواه)') : $t('پورت‌های سرویس روی این سرور'))">
           <input v-model="f.ports" type="text" dir="ltr" placeholder="443, 8443:2053, 8000-8010" />
         </FormField>
@@ -164,9 +169,10 @@ onMounted(async () => {
         <FormField v-if="!isKernel" :label="$t('کلید تانل (PSK)')" :hint="$t('هر دو سمت باید یک کلید داشته باشند؛ دستور سمت مقابل آن را خودکار منتقل می‌کند.')">
           <div class="cmd"><input v-model="f.psk" type="text" dir="ltr" required /><button type="button" class="btn icon-only" :title="$t('کلید جدید')" @click="f.psk = randomKey()"><AppIcon name="key" /></button></div>
         </FormField>
+        </template>
       </div>
 
-      <div v-if="!isKernel" class="card">
+      <div v-if="!isKernel && !isMulti" class="card">
         <div class="card-head"><h3><AppIcon name="net" /> {{ $t('ترنسپورت') }}</h3><span class="tag">TRANSPORT</span></div>
         <template v-if="dials">
           <div class="section-title">{{ $t('مسیرهای اتصال') }}</div>
@@ -194,6 +200,7 @@ onMounted(async () => {
 
     <KernelForm v-if="isKernel" :role="f.mode === 'client' ? 'IRAN' : 'KHAREJ'" :self-host="selfHost" :ports="f.ports" :udp-ports="f.udp"
       @done="emit('done', '', 'kernel')" @cancel="emit('cancel')" />
+    <MultiForm v-else-if="isMulti" @done="(n, kind) => emit('done', n, kind)" @cancel="emit('cancel')" />
 
     <template v-else>
     <div v-if="sshInUse" class="card">

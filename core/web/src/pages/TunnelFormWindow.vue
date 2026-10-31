@@ -8,7 +8,7 @@ const emit = defineEmits(['close']);
 const router = useRouter();
 function done(name, kind) {
   emit('close');
-  router.push(kind === 'kernel' ? '/kernel' : '/tunnel/' + encodeURIComponent(name));
+  router.push(kind === 'kernel' ? '/kernel' : kind === 'multi' ? '/tunnels' : '/tunnel/' + encodeURIComponent(name));
 }
 </script>
 

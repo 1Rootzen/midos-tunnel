@@ -502,6 +502,8 @@ func (s *panelServer) routes() http.Handler {
 	mux.HandleFunc("POST "+b+"/api/fleet/add", s.authed(s.handleFleetAdd))
 	mux.HandleFunc("POST "+b+"/api/fleet/apply", s.authed(s.handleFleetApply))
 	mux.HandleFunc("POST "+b+"/api/fleet/unlink", s.authed(s.handleFleetUnlink))
+	mux.HandleFunc("POST "+b+"/api/fleet/edit", s.authed(s.handleFleetEdit))
+	mux.HandleFunc("POST "+b+"/api/fleet/links", s.authed(s.handleFleetLinks))
 	mux.HandleFunc("POST "+b+"/api/fleet/remove", s.authed(s.handleFleetRemove))
 	mux.HandleFunc("GET "+b+"/api/audit", s.authed(s.handleAudit))
 	mux.HandleFunc("GET "+b+"/api/update", s.authed(s.handleUpdateCheck))

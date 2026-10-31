@@ -6,8 +6,9 @@ import { fwd } from '../lib/i18n.js';
 import AppIcon from './AppIcon.vue';
 
 // A tunnel the network designer built between two other servers. It opens the
-// designer, where the cable is managed.
+// designer, where the cable is managed; its edit button changes the cable here.
 const props = defineProps({ c: { type: Object, required: true } });
+const emit = defineEmits(['edit']);
 const DOT = { up: 'ok', warn: 'warn', down: 'bad', missing: 'bad', off: '', draft: '' };
 const dot = computed(() => DOT[props.c.st] || '');
 </script>
@@ -19,6 +20,9 @@ const dot = computed(() => DOT[props.c.st] || '');
     <div class="tcell"><div class="tag">LINK</div><div class="v">{{ c.kind }}</div></div>
     <div class="tcell"><div class="tag">RTT</div><div class="v"><span v-if="c.rtt" class="num">{{ ms(c.rtt) }}</span><span v-else class="faint">—</span></div></div>
     <div class="tcell"><div class="tag">STATUS</div><div class="v">{{ $t(STATE_TEXT[c.st] || c.st) }}</div></div>
-    <AppIcon name="chev" class="chev" />
+    <span class="trow-end">
+      <button type="button" class="btn small icon-only trow-edit" :title="$t('ویرایش')" @click.prevent.stop="emit('edit', c.id)"><AppIcon name="edit" /></button>
+      <AppIcon name="chev" class="chev" />
+    </span>
   </router-link>
 </template>

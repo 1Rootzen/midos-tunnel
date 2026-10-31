@@ -152,7 +152,6 @@ export default {
   'تانل از روی سرورها برداشته شد.': 'The tunnel was removed from the servers.',
   'سرور مادر کابل دارد؛ اول کابل‌هایش را حذف کنید': 'The mother server has cables; remove its cables first',
   'این سرور کابل دارد؛ اول کابل‌هایش را حذف کنید': 'This server has cables; remove its cables first',
-  'کابل اعمال‌شده را نمی‌توان تغییر نوع داد؛ حذف و دوباره بکشید': "An applied cable's type cannot be changed; remove it and draw it again",
   'این سرور خارج کابل کرنلی دیگری دارد': 'This abroad server already has another kernel cable',
   'یک سر کابل پیدا نشد': 'One end of the cable was not found',
   'دو سر کابل {ends} باید یکی ایران و دیگری خارج باشد': 'Cable {ends} must join one Iran server and one abroad server',
