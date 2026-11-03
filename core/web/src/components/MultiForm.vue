@@ -5,7 +5,7 @@ import { fail, toast } from '../lib/toast.js';
 import { t, fwd } from '../lib/i18n.js';
 import { fa } from '../lib/format.js';
 import { DEF_PORT } from '../lib/constants.js';
-import { nodeName, localPorts, UDP_CARRIERS, STEP_ICON } from '../lib/fleet.js';
+import { nodeName, localPorts, remotePorts, portPairs, UDP_CARRIERS, STEP_ICON } from '../lib/fleet.js';
 import FormField from './FormField.vue';
 import AppIcon from './AppIcon.vue';
 import CableFields from './CableFields.vue';
@@ -55,11 +55,26 @@ const perRowPort = computed(() => !kernel.value && f.reverse && f.transport !== 
 const carrierPort = (r, i) => Number(r.port) || (Number(f.port) || DEF_PORT[f.transport] || 443) + i;
 const iranName = computed(() => (iranChoices.value.find((c) => c.id === f.iran) || {}).name || '');
 
+// the cables the chosen Iran server already has, with the ports each takes there
+const existing = computed(() => (f.iran ? fleet.value.links.filter((l) => l.a === f.iran || l.b === f.iran) : []).map((l) => ({
+  name: nodeName(byId(l.a === f.iran ? l.b : l.a)), ports: l.ports || '', udp: l.udp_ports || '', kind: l.kind,
+})));
+
+// the ports each server takes on the Iran server: two locations on one port
+// would leave one of them without traffic
+function claims() {
+  const tcp = new Map(), udp = new Map();
+  for (const x of existing.value) {
+    for (const p of localPorts(x.ports)) tcp.set(p, x.name);
+    for (const p of localPorts(x.udp)) udp.set(p, x.name);
+  }
+  return { tcp, udp };
+}
+
 function check() {
   if (!f.iran) return t('سرور ایران را انتخاب کنید');
   if (!rows.value.some((r) => r.node)) return t('حداقل یک سرور خارج انتخاب کنید');
-  if (kernel.value) return localPorts(f.ports).length || localPorts(f.udp_ports).length ? '' : t('حداقل یک پورت منتقل‌شونده وارد کنید');
-  const tcp = new Map(), udp = new Map();
+  const { tcp, udp } = claims();
   const claim = (m, p, who) => {
     const had = m.get(p);
     if (had && had !== who) return t('پورت {p} روی سرور ایران هم برای «{a}» است هم «{b}»', { p, a: had, b: who });
@@ -78,6 +93,33 @@ function check() {
   return '';
 }
 
+// When every location runs the same service ports (the same xray inbounds),
+// give the other locations their own ports on the Iran server that lead to
+// those same ports there: "37826:37825" is Iran's 37826 to that server's 37825.
+function suggestPorts() {
+  const src = rows.value.find((r) => r.node && (r.ports.trim() || r.udp.trim()));
+  if (!src) { toast(t('اول پورت‌های یکی از لوکیشن‌ها را وارد کنید'), 'err'); return; }
+  const { tcp, udp } = claims();
+  for (const r of rows.value) for (const p of localPorts(r.ports)) tcp.set(p, 1);
+  for (const r of rows.value) for (const p of localPorts(r.udp)) udp.set(p, 1);
+  const remap = (list, used) => remotePorts(list).map((p) => {
+    let ext = p + 1;
+    while (used.has(ext) && ext < 65535) ext++;
+    used.set(ext, 1);
+    return ext + ':' + p;
+  }).join(', ');
+  for (const r of rows.value) {
+    if (r === src || !r.node || r.ports.trim() || r.udp.trim()) continue;
+    r.ports = remap(src.ports, tcp);
+    r.udp = remap(src.udp, udp);
+  }
+}
+
+// what each location takes on the Iran server, for the port map
+const portMap = computed(() => rows.value.filter((r) => r.node).map((r) => ({
+  name: nodeName(byId(r.node)), ip: byId(r.node).ip, tcp: portPairs(r.ports), udp: portPairs(r.udp),
+})));
+
 async function submit() {
   const why = check();
   if (why) { toast(why, 'err'); return; }
@@ -85,7 +127,7 @@ async function submit() {
   const links = list.map(({ r, i }) => ({
     a: f.iran, b: r.node, kind: f.kind, reverse: f.reverse, transport: f.transport, mode: f.mode,
     port: perRowPort.value ? carrierPort(r, i) : Number(f.port) || 0, preset: f.preset, carriers: Number(f.carriers) || 0,
-    ports: kernel.value ? f.ports : r.ports, udp_ports: kernel.value ? f.udp_ports : r.udp,
+    ports: r.ports, udp_ports: r.udp,
   }));
   busy.value = true;
   let ids;
@@ -126,10 +168,12 @@ async function submit() {
           </select>
         </FormField>
         <p v-if="!iranChoices.length" class="hint warn">{{ $t('هیچ سرور ایرانی آماده نیست؛ اول در صفحهٔ سرورها یک سرور ایران اضافه کنید.') }}</p>
-        <CableFields :l="f" :with-ports="kernel" />
-        <p class="hint">{{ kernel
-          ? $t('همهٔ سرورهای خارج همین پورت‌ها و همین نوع تانل کرنلی را می‌گیرند.')
-          : $t('هر سرور خارج پورت‌های خودش را دارد؛ کاربر با پورتی که وصل می‌شود لوکیشن را انتخاب می‌کند.') }}</p>
+        <CableFields :l="f" :with-ports="false" />
+        <p class="hint">{{ $t('هر سرور خارج پورت‌های خودش را دارد؛ کاربر با پورتی که وصل می‌شود لوکیشن را انتخاب می‌کند.') }}</p>
+        <div v-if="existing.length" class="mexist">
+          <div class="section-title">{{ $t('تانل‌های فعلی این سرور ایران') }}</div>
+          <div v-for="(x, k) in existing" :key="k" class="mexist-row"><b>{{ x.name }}</b><span dir="ltr">{{ [x.ports, x.udp && 'UDP ' + x.udp].filter(Boolean).join(' · ') || '—' }}</span></div>
+        </div>
       </div>
 
       <div class="card">
@@ -139,7 +183,7 @@ async function submit() {
         </div>
         <p v-if="!kharejs.length" class="hint warn">{{ $t('هنوز سرور خارجی اضافه نشده است.') }}</p>
         <div v-for="(r, i) in rows" :key="i" class="mpeer">
-          <div class="mpeer-head"><b>{{ $t('لوکیشن {n}', { n: fa(i + 1) }) }}</b>
+          <div class="mpeer-head"><b>{{ r.node ? nodeName(byId(r.node)) : $t('لوکیشن {n}', { n: fa(i + 1) }) }}</b>
             <button v-if="rows.length > 1" type="button" class="btn small danger icon-only" :title="$t('حذف')" :disabled="busy || finished" @click="rows.splice(i, 1)"><AppIcon name="trash" /></button></div>
           <FormField :label="$t('سرور خارج')">
             <select v-model="r.node" :disabled="busy || finished">
@@ -149,14 +193,34 @@ async function submit() {
               </option>
             </select>
           </FormField>
-          <div v-if="!kernel" class="row">
-            <FormField :label="$t('پورت‌های TCP')"><input v-model="r.ports" type="text" dir="ltr" placeholder="2083, 8443:443" :disabled="busy || finished" /></FormField>
-            <FormField :label="$t('پورت‌های UDP')"><input v-model="r.udp" type="text" dir="ltr" placeholder="51820" :disabled="busy || finished" /></FormField>
+          <div class="row">
+            <FormField :label="$t('پورت‌های TCP این لوکیشن')"><input v-model="r.ports" type="text" dir="ltr" placeholder="37825, 62623" :disabled="busy || finished" /></FormField>
+            <FormField :label="$t('پورت‌های UDP این لوکیشن')"><input v-model="r.udp" type="text" dir="ltr" placeholder="51820" :disabled="busy || finished" /></FormField>
             <FormField v-if="perRowPort" :label="$t('پورت حامل روی ایران')"><input v-model.number="r.port" type="number" dir="ltr" min="1" max="65535" :placeholder="String(carrierPort({}, i))" :disabled="busy || finished" /></FormField>
           </div>
         </div>
-        <button type="button" class="btn small" :disabled="busy || finished" @click="adding = true"><AppIcon name="plus" /> {{ $t('افزودن سرور خارج تازه') }}</button>
+        <p class="hint">{{ $t('اگر سرویس روی همهٔ سرورهای خارج همان پورت‌ها را دارد، 37826:37825 یعنی پورت 37826 ایران به پورت 37825 آن سرور.') }}</p>
+        <div class="mpeer-actions">
+          <button type="button" class="btn small" :disabled="busy || finished || rows.length < 2" @click="suggestPorts"><AppIcon name="redo" /> {{ $t('پورت جدا برای بقیهٔ لوکیشن‌ها') }}</button>
+          <button type="button" class="btn small" :disabled="busy || finished" @click="adding = true"><AppIcon name="plus" /> {{ $t('افزودن سرور خارج تازه') }}</button>
+        </div>
       </div>
+    </div>
+
+    <div v-if="portMap.length" class="card mmap">
+      <div class="card-head"><h3><AppIcon name="link" /> {{ $t('نقشهٔ پورت‌ها') }}</h3><span class="tag">PORT MAP</span></div>
+      <table class="mmap-table">
+        <thead><tr><th>{{ $t('لوکیشن') }}</th><th>{{ $t('پورت روی ایران') }}</th><th></th><th>{{ $t('پورت روی سرور خارج') }}</th></tr></thead>
+        <tbody>
+          <template v-for="m in portMap" :key="m.name">
+            <tr v-for="(p, k) in m.tcp.concat(m.udp.map((x) => ({ ...x, udp: true })))" :key="m.name + k">
+              <td v-if="k === 0" :rowspan="m.tcp.length + m.udp.length"><b>{{ m.name }}</b><div class="faint" dir="ltr">{{ m.ip }}</div></td>
+              <td dir="ltr">{{ p.iran }}{{ p.udp ? ' UDP' : '' }}</td><td>{{ fwd() }}</td><td dir="ltr">{{ p.remote }}</td>
+            </tr>
+            <tr v-if="!m.tcp.length && !m.udp.length"><td><b>{{ m.name }}</b></td><td colspan="3" class="faint">{{ $t('هنوز پورتی وارد نشده') }}</td></tr>
+          </template>
+        </tbody>
+      </table>
     </div>
 
     <div v-if="jobs.length" class="card mjobs">
@@ -184,6 +248,13 @@ async function submit() {
 .mpeer { padding: 12px 0; border-top: 1px dashed var(--line-2); }
 .mpeer:first-of-type { border-top: 0; padding-top: 0; }
 .mpeer-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.mpeer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mexist { margin-top: 12px; }
+.mexist-row { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 13px; }
+.mmap { margin-top: 14px; overflow-x: auto; }
+.mmap-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mmap-table th { text-align: start; font-weight: 500; color: var(--ti-3); padding: 6px 8px; }
+.mmap-table td { padding: 6px 8px; border-top: 1px solid var(--line-2); vertical-align: top; }
 .mjobs { margin-top: 14px; }
 .mjob + .mjob { margin-top: 12px; }
 .mjob-head { display: flex; align-items: center; gap: 8px; }

@@ -65,11 +65,11 @@ function setTransport() {
       </div>
     </template>
     <template v-else>
-      <FormField :label="$t('نوع تانل کرنلی')" :hint="$t('همهٔ کابل‌های کرنلی یک سرور ایران با یک پیکربندی ساخته می‌شوند.')">
+      <FormField :label="$t('نوع تانل کرنلی')" :hint="$t('نوع تانل کرنلی برای همهٔ کابل‌های کرنلی یک سرور ایران یکی است؛ پورت‌های هر کابل جداست.')">
         <select v-model="l.mode"><option v-for="[v, n] in KERNEL_MODES" :key="v" :value="v">{{ $t(n) }}</option></select>
       </FormField>
       <template v-if="withPorts">
-        <FormField :label="$t('پورت‌های TCP منتقل‌شونده')" :hint="$t('عدد یا بازه، مثل 443, 2000-3000')"><input v-model="l.ports" type="text" dir="ltr" placeholder="443, 8443" /></FormField>
+        <FormField :label="$t('پورت‌های TCP منتقل‌شونده')" :hint="$t('عدد، بازه یا 37826:37825 (پورت ایران به پورت سرور خارج)')"><input v-model="l.ports" type="text" dir="ltr" placeholder="37825, 62623" /></FormField>
         <FormField :label="$t('پورت‌های UDP (اختیاری)')"><input v-model="l.udp_ports" type="text" dir="ltr" placeholder="51820" /></FormField>
       </template>
     </template>

@@ -109,7 +109,6 @@ export default {
   'پریست سرعت': 'Speed preset',
   'تعداد حامل': 'Carriers',
   'نوع تانل کرنلی': 'Kernel tunnel type',
-  'همهٔ کابل‌های کرنلی یک سرور ایران با یک پیکربندی ساخته می‌شوند.': 'All kernel cables of one Iran server are built from one configuration.',
   'تانل کرنلی برای سرور مقابل به دسترسی SSH نیاز دارد.': 'A kernel tunnel needs SSH access to the other server.',
   'اعمال این کابل': 'Apply this cable',
   'اعمال دوباره': 'Apply again',

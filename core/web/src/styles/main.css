@@ -303,6 +303,8 @@ pre.logs { max-height: 420px; }
 .trow .chev { color: var(--ti-3); transition: transform 0.2s, color 0.2s; }
 .trow:hover .chev { color: var(--accent-2); transform: translate3d(calc(4px * var(--fwd)), 0, 0) scaleX(var(--chev)); }
 .trow-end { display: flex; align-items: center; gap: 6px; }
+.tports { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; font-size: 11px; color: var(--ti-3); }
+.tports span { padding: 1px 6px; border: 1px solid var(--line-2); border-radius: 6px; }
 .trow-edit { opacity: 0.75; }
 .trow:hover .trow-edit { opacity: 1; }
 @media (max-width: 760px) { .trow { grid-template-columns: 1fr 1fr; } .trow .tname { grid-column: 1 / -1; } .trow .chev { display: none; } .trow-end { grid-column: 1 / -1; justify-content: flex-end; } }

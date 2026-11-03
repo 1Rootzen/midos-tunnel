@@ -167,6 +167,77 @@ func TestFleetLinksOneIranManyKharej(t *testing.T) {
 	}
 }
 
+// Each kernel cable of one Iran server forwards its own ports, so several
+// locations running the same service each answer on a port of their own.
+func TestFleetKernelPortsPerLocation(t *testing.T) {
+	f := useFakeFleet(t)
+	p := newTestPanel(t)
+	p.login(testPassword)
+	ir := addServer(t, p, "iran", "198.51.100.10")
+	k1 := addServer(t, p, "kharej", "198.51.100.21")
+	k2 := addServer(t, p, "kharej", "198.51.100.22")
+	k3 := addServer(t, p, "kharej", "198.51.100.23")
+	w := p.do("POST", "/api/fleet/links", map[string]any{"links": []map[string]any{
+		{"a": ir, "b": k1, "kind": "kernel", "mode": "esp", "ports": "37825, 62623"},
+		{"a": ir, "b": k2, "kind": "kernel", "mode": "esp", "ports": "37826:37825, 62624:62623", "udp_ports": "37826:37825"},
+	}}, true)
+	if w.Code != http.StatusOK {
+		t.Fatalf("links: %d %s", w.Code, w.Body)
+	}
+	var r struct{ IDs []string }
+	_ = json.NewDecoder(w.Body).Decode(&r)
+	if w := p.do("POST", "/api/fleet/apply", map[string]any{"id": r.IDs[0]}, true); w.Code != http.StatusOK {
+		t.Fatalf("apply: %d %s", w.Code, w.Body)
+	}
+	hub, _, _ := f.host("198.51.100.10").ran(" provision")
+	topo := p.s.loadTopology()
+	l1, _ := linkByID(topo, r.IDs[0])
+	l2, _ := linkByID(topo, r.IDs[1])
+	for _, want := range []string{
+		"MIDOS_PEER_" + itoa(l1.Slot) + "_TCP='37825,62623'",
+		"MIDOS_PEER_" + itoa(l2.Slot) + "_TCP='37826:37825,62624:62623'",
+		"MIDOS_PEER_" + itoa(l2.Slot) + "_UDP='37826:37825'",
+	} {
+		if !strings.Contains(hub, want) {
+			t.Errorf("hub provision lacks %s:\n%s", want, hub)
+		}
+	}
+	if strings.Contains(hub, "MIDOS_TCP_PORTS") || l1.Ports != "37825, 62623" || l2.Ports != "37826:37825, 62624:62623" {
+		t.Fatalf("ports were shared: %s\n%+v %+v", hub, l1, l2)
+	}
+
+	// a third location on a port the first already forwards is refused, both
+	// as a new cable and as an edit, before any server is touched
+	before := len(f.host("198.51.100.10").cmds)
+	w = p.do("POST", "/api/fleet/links", map[string]any{"links": []map[string]any{{"a": ir, "b": k3, "kind": "kernel", "mode": "esp", "ports": "62623"}}}, true)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "62623") {
+		t.Fatalf("clashing location: %d %s", w.Code, w.Body)
+	}
+	w = p.do("POST", "/api/fleet/edit", map[string]any{"id": r.IDs[1], "kind": "kernel", "mode": "esp", "ports": "37825"}, true)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("clashing edit: %d %s", w.Code, w.Body)
+	}
+	if len(f.host("198.51.100.10").cmds) != before || len(p.s.loadTopology().Links) != 2 {
+		t.Fatal("a refused request changed something")
+	}
+	// moving a location to free ports is fine
+	if w := p.do("POST", "/api/fleet/edit", map[string]any{"id": r.IDs[1], "kind": "kernel", "mode": "esp", "ports": "37827:37825"}, true); w.Code != http.StatusOK {
+		t.Fatalf("edit to free ports: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestIranPorts(t *testing.T) {
+	got := iranPorts("443, 2000-2002, 37826:37825, 9000-9001:9000, junk")
+	for _, p := range []int{443, 2000, 2001, 2002, 37826, 9000, 9001} {
+		if !got[p] {
+			t.Errorf("missing %d in %v", p, got)
+		}
+	}
+	if got[37825] || len(got) != 7 {
+		t.Fatalf("iran ports: %v", got)
+	}
+}
+
 // A page with an older copy of the map can neither undo an edit of an applied
 // cable nor drop a cable built while it was open.
 func TestTopologyPutKeepsAppliedCables(t *testing.T) {

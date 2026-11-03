@@ -1478,7 +1478,9 @@ func (s *panelServer) kernelRun(ctx context.Context, e fleetEnd, env []envKV, ac
 
 // applyKernel (re)builds the kernel tunnel of one Iran hub with all of its
 // Kharej servers. keep lists the cables to build; a Kharej server left out is
-// torn down by the caller.
+// torn down by the caller. The hub's servers share one mode and key (tmpl's
+// mode), but each cable forwards its own ports, so every location answers on
+// ports of its own.
 func (s *panelServer) applyKernel(ctx context.Context, t topology, hubID string, keep []topoLink, tmpl topoLink) ([]stepResult, error) {
 	hub, err := s.endOf(t, hubID)
 	if err != nil {
@@ -1500,10 +1502,7 @@ func (s *panelServer) applyKernel(ctx context.Context, t topology, hubID string,
 	if psk == "" {
 		psk = randomToken(16)
 	}
-	base, err := commonKernelEnv(kernelCreateReq{
-		Mode: firstNonEmpty(tmpl.Mode, "esp"), PSK: psk, Watchdog: true,
-		TCPPorts: strings.Join(splitList(tmpl.Ports), ","), UDPPorts: strings.Join(splitList(tmpl.UDPPorts), ","),
-	})
+	base, err := commonKernelEnv(kernelCreateReq{Mode: firstNonEmpty(tmpl.Mode, "esp"), PSK: psk, Watchdog: true})
 	if err != nil {
 		return nil, err
 	}
@@ -1532,7 +1531,7 @@ func (s *panelServer) applyKernel(ctx context.Context, t topology, hubID string,
 				return nil, errors.New("بیش از ۳۲ سرور خارج روی یک سرور ایران ممکن نیست")
 			}
 		}
-		l.PSK, l.Mode, l.Ports, l.UDPPorts, l.Tunnel = psk, firstNonEmpty(tmpl.Mode, "esp"), tmpl.Ports, tmpl.UDPPorts, "kernel"
+		l.PSK, l.Mode, l.Tunnel = psk, firstNonEmpty(tmpl.Mode, "esp"), "kernel"
 		peers = append(peers, peer{l, e})
 		specs = append(specs, e.host+":"+sanitizeLabel(e.node.Label, "kharej"+strconv.Itoa(l.Slot))+":"+strconv.Itoa(l.Slot))
 	}
@@ -1549,6 +1548,11 @@ func (s *panelServer) applyKernel(ctx context.Context, t topology, hubID string,
 	hubEnv := kv(append([]envKV{}, base...), "MIDOS_ROLE", "IRAN")
 	hubEnv = kv(hubEnv, "MIDOS_SELF_IP", hub.host)
 	hubEnv = kv(hubEnv, "MIDOS_PEERS", strings.Join(specs, ","))
+	for _, p := range peers {
+		slot := strconv.Itoa(p.link.Slot)
+		hubEnv = kv(hubEnv, "MIDOS_PEER_"+slot+"_TCP", strings.Join(splitList(p.link.Ports), ","))
+		hubEnv = kv(hubEnv, "MIDOS_PEER_"+slot+"_UDP", strings.Join(splitList(p.link.UDPPorts), ","))
+	}
 	out, err := s.kernelRun(ctx, hub, hubEnv, "provision")
 	if step(hub, out, err) != nil {
 		return results, fmt.Errorf("ساخت تانل کرنلی روی «%s» ناموفق بود", nodeName(hub.node))
@@ -1716,7 +1720,54 @@ func cableSettings(l, req topoLink) topoLink {
 	return l
 }
 
-var kernelPortsRE = regexp.MustCompile(`^\d{1,5}(-\d{1,5})?$`)
+// a kernel port term: 443, 2000-3000, or 12053:2053 (this server's 12053 to
+// the Kharej server's 2053), as the kernel installer reads them
+var kernelPortsRE = regexp.MustCompile(`^(\d{1,5})(?:-(\d{1,5}))?(?::\d{1,5})?$`)
+
+// iranPorts lists the ports a kernel cable takes on its Iran server.
+func iranPorts(list string) map[int]bool {
+	out := map[int]bool{}
+	for _, p := range splitList(list) {
+		m := kernelPortsRE.FindStringSubmatch(p)
+		if m == nil {
+			continue
+		}
+		a, _ := strconv.Atoi(m[1])
+		b := a
+		if m[2] != "" {
+			b, _ = strconv.Atoi(m[2])
+		}
+		for n := a; n <= b && n <= 65535; n++ {
+			out[n] = true
+		}
+	}
+	return out
+}
+
+// kernelPortClash reports a port that cable l would take on its Iran server
+// while another kernel cable of the same server already forwards it: only
+// one of them would ever get the traffic.
+func kernelPortClash(t topology, l topoLink) error {
+	if l.Kind != "kernel" {
+		return nil
+	}
+	hub := kernelHub(t, l)
+	for _, x := range kernelGroup(t, hub) {
+		if x.ID == l.ID {
+			continue
+		}
+		for _, pair := range [][2]string{{l.Ports, x.Ports}, {l.UDPPorts, x.UDPPorts}} {
+			theirs := iranPorts(pair[1])
+			for p := range iranPorts(pair[0]) {
+				if theirs[p] {
+					other, _ := nodeByID(t, otherEnd(x, hub))
+					return fmt.Errorf("پورت %d روی سرور ایران از قبل به «%s» منتقل می‌شود؛ برای هر لوکیشن پورت جدا بدهید (مثلاً 37826:37825)", p, nodeName(other))
+				}
+			}
+		}
+	}
+	return nil
+}
 
 // checkCable rejects settings that could not be built, before anything on a
 // server is touched.
@@ -1730,7 +1781,7 @@ func checkCable(l topoLink) error {
 		}
 		for _, p := range append(splitList(l.Ports), splitList(l.UDPPorts)...) {
 			if !kernelPortsRE.MatchString(p) {
-				return fmt.Errorf("پورت %q برای تانل کرنلی معتبر نیست (فقط عدد یا بازه مثل 2000-3000)", p)
+				return fmt.Errorf("پورت %q برای تانل کرنلی معتبر نیست (عدد، بازه مثل 2000-3000 یا تغییر شماره مثل 37826:37825)", p)
 			}
 		}
 		return nil
@@ -1782,6 +1833,10 @@ func (s *panelServer) handleFleetEdit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := checkTopology(&trial); err != nil {
+		jsonError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := kernelPortClash(trial, next); err != nil {
 		jsonError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -1892,7 +1947,16 @@ func (s *panelServer) handleFleetLinks(w http.ResponseWriter, r *http.Request) {
 			t.Links = append(t.Links, l)
 			ids = append(ids, l.ID)
 		}
-		return checkTopology(t)
+		if err := checkTopology(t); err != nil {
+			return err
+		}
+		for _, id := range ids {
+			l, _ := linkByID(*t, id)
+			if err := kernelPortClash(*t, l); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		jsonError(w, http.StatusBadRequest, err.Error())

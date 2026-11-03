@@ -8,7 +8,7 @@ import { confirmBox } from '../lib/confirm.js';
 import { split, bytes, fa } from '../lib/format.js';
 import { t, i18n, pct } from '../lib/i18n.js';
 import { TRANSPORTS, PRESETS } from '../lib/constants.js';
-import { NODE_STATE, roleOf, nodeName, cableState, cableRtt } from '../lib/fleet.js';
+import { NODE_STATE, roleOf, nodeName, cableState, cableRtt, localPorts } from '../lib/fleet.js';
 import { createEngine, KIND, CABLE, KERNEL_MODES, snap, cableType } from '../topology/engine.js';
 import { DEF_PORT, STATE_TEXT, uid, serialize, cableLabel, benchSummary } from '../topology/model.js';
 import PageHead from '../components/PageHead.vue';
@@ -283,6 +283,23 @@ function checkReady(l) {
   if (role(a) === role(b) || role(a) === 'none' || role(b) === 'none') return t('دو سر کابل {ends} باید یکی ایران و دیگری خارج باشد', { ends: cableEnds(l) });
   for (const n of [a, b]) if (!isReady(n)) return t('سرور «{name}» هنوز اضافه و نصب نشده است', { name: nodeName(n) });
   if (!split(l.ports).length && !split(l.udp_ports).length) return t('برای کابل {ends} حداقل یک پورت وارد کنید', { ends: cableEnds(l) });
+  return portClash(l);
+}
+
+// Two cables of one Iran server forwarding the same port there: only one of
+// them would ever get the traffic, so each location needs ports of its own.
+const iranEnd = (l) => (role(nodeById(l.a)) === 'iran' ? l.a : l.b);
+function portClash(l) {
+  const hub = iranEnd(l);
+  const far = (x) => nodeName(nodeById(x.a === hub ? x.b : x.a) || {});
+  for (const x of topo.links) {
+    if (x.id === l.id || iranEnd(x) !== hub) continue;
+    for (const [mine, theirs] of [[l.ports, x.ports], [l.udp_ports, x.udp_ports]]) {
+      const taken = new Set(localPorts(theirs));
+      const p = localPorts(mine).find((q) => taken.has(q));
+      if (p) return t('پورت {p} روی سرور ایران هم برای «{a}» است هم «{b}»', { p, a: far(l), b: far(x) });
+    }
+  }
   return '';
 }
 
@@ -541,10 +558,10 @@ onBeforeUnmount(() => {
           </div>
         </template>
         <template v-else>
-          <FormField :label="$t('نوع تانل کرنلی')" :hint="$t('همهٔ کابل‌های کرنلی یک سرور ایران با یک پیکربندی ساخته می‌شوند.')">
+          <FormField :label="$t('نوع تانل کرنلی')" :hint="$t('نوع تانل کرنلی برای همهٔ کابل‌های کرنلی یک سرور ایران یکی است؛ پورت‌های هر کابل جداست.')">
             <select v-model="selLink.mode" :disabled="!!selLink.tunnel" @change="changed"><option v-for="[v, t] in KERNEL_MODES" :key="v" :value="v">{{ $t(t) }}</option></select>
           </FormField>
-          <FormField :label="$t('پورت‌های TCP منتقل‌شونده')"><input v-model="selLink.ports" type="text" dir="ltr" placeholder="443, 8443" :disabled="!!selLink.tunnel" @input="save" /></FormField>
+          <FormField :label="$t('پورت‌های TCP منتقل‌شونده')" :hint="$t('عدد، بازه یا 37826:37825 (پورت ایران به پورت سرور خارج)')"><input v-model="selLink.ports" type="text" dir="ltr" placeholder="37825, 62623" :disabled="!!selLink.tunnel" @input="save" /></FormField>
           <FormField :label="$t('پورت‌های UDP (اختیاری)')"><input v-model="selLink.udp_ports" type="text" dir="ltr" placeholder="51820" :disabled="!!selLink.tunnel" @input="save" /></FormField>
           <p class="muted">{{ $t('تانل کرنلی برای سرور مقابل به دسترسی SSH نیاز دارد.') }}</p>
         </template>

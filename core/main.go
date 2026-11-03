@@ -5,10 +5,34 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 )
 
-var version = "2.6.3"
+var version = "2.6.4"
+
+// exitHooks undo what a relay changed on the system (the ICMP listener turns
+// the kernel's ping replies off) when it is told to stop.
+var exitHooks struct {
+	sync.Mutex
+	fns []func()
+}
+
+func onExit(fn func()) {
+	exitHooks.Lock()
+	exitHooks.fns = append(exitHooks.fns, fn)
+	exitHooks.Unlock()
+}
+
+func runExitHooks() {
+	exitHooks.Lock()
+	fns := exitHooks.fns
+	exitHooks.fns = nil
+	exitHooks.Unlock()
+	for _, fn := range fns {
+		fn()
+	}
+}
 
 func main() {
 	// "midos-tunnel panel ..." runs the web panel; anything else is a relay
@@ -56,6 +80,7 @@ func main() {
 	go func() {
 		<-stop
 		log.Printf("shutting down")
+		runExitHooks()
 		os.Exit(0)
 	}()
 

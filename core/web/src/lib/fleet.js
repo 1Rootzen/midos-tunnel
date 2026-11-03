@@ -69,13 +69,30 @@ export function fleetTunnels(fleet) {
     .map((l) => {
       const [iran, kharej] = byId[l.a].role === 'kharej' ? [byId[l.b], byId[l.a]] : [byId[l.a], byId[l.b]];
       return { id: l.id, name: l.kind === 'kernel' ? 'kernel' : l.tunnel, from: nodeName(iran), to: nodeName(kharej),
-        kind: cableKindText(l, KERNEL_MODES), st: cableState(l, byId), rtt: cableRtt(l, byId) };
+        kind: cableKindText(l, KERNEL_MODES), st: cableState(l, byId), rtt: cableRtt(l, byId),
+        ports: portPairs(l.ports), udp: portPairs(l.udp_ports) };
     });
 }
 
 export const cableType = (l) => (l.kind === 'direct' && l.reverse ? 'reverse' : l.kind);
 // transports whose carrier rides UDP; the rest open a TCP port
 export const UDP_CARRIERS = ['kcp', 'quic', 'dns'];
+
+const portTerms = (list) => String(list || '').split(/[\s,،]+/).filter(Boolean);
+
+// portPairs reads a port field as "Iran port -> port on the other server"
+// pairs for display: "443" is 443 -> 443, "37826:37825" is 37826 -> 37825,
+// "443=10.0.0.5:2096" is 443 -> 10.0.0.5:2096.
+export function portPairs(list) {
+  return portTerms(list).map((e) => {
+    const m = /^([\d-]+)[:=](.+)$/.exec(e);
+    return m ? { iran: m[1], remote: m[2] } : { iran: e, remote: e };
+  });
+}
+
+// remotePorts lists the single ports a field reaches on the other server
+// (ranges and custom destinations are left out)
+export const remotePorts = (list) => portPairs(list).map((p) => p.remote).filter((r) => /^\d+$/.test(r)).map(Number);
 
 // localPorts lists the ports an Iran server opens for one port field
 // ("443, 8443:2053, 8000-8010, 2096=10.0.0.5:2096"): the part before ":" or

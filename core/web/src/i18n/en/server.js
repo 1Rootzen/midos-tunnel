@@ -111,7 +111,8 @@ export const patterns = [
   [/^کلید سرور مادر از سرور پاک نشد: ([\s\S]*)$/, "The mother server's key was not removed from the server: $1"],
 
   // editing a cable
-  [/^پورت "(.*)" برای تانل کرنلی معتبر نیست \(فقط عدد یا بازه مثل 2000-3000\)$/, 'Port "$1" is not valid for a kernel tunnel (numbers or ranges like 2000-3000 only)'],
+  [/^پورت "(.*)" برای تانل کرنلی معتبر نیست \(عدد، بازه مثل 2000-3000 یا تغییر شماره مثل 37826:37825\)$/, 'Port "$1" is not valid for a kernel tunnel (a number, a range like 2000-3000, or a remap like 37826:37825)'],
+  [/^پورت (\d+) روی سرور ایران از قبل به «(.*)» منتقل می‌شود؛ برای هر لوکیشن پورت جدا بدهید \(مثلاً 37826:37825\)$/, 'Port $1 on the Iran server already goes to "$2"; give each location ports of its own (for example 37826:37825)'],
   [/^پریست "(.*)" شناخته نیست$/, 'Unknown preset "$1"'],
   [/^برداشتن تانل قبلی ناموفق بود: (.*)$/, 'Removing the old tunnel failed: $1'],
 

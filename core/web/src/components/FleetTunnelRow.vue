@@ -16,7 +16,11 @@ const dot = computed(() => DOT[props.c.st] || '');
 <template>
   <router-link to="/topology" class="trow card">
     <div class="tname"><i class="dot" :class="dot"></i><span>{{ c.name }}</span><span class="pill">{{ $t('شبکه') }}</span></div>
-    <div class="tcell"><div class="tag">SERVERS</div><div class="v">{{ c.from }} {{ fwd() }} {{ c.to }}</div></div>
+    <div class="tcell"><div class="tag">SERVERS</div><div class="v">{{ c.from }} {{ fwd() }} {{ c.to }}</div>
+      <div v-if="c.ports.length || c.udp.length" class="tports" dir="ltr" :title="$t('پورت روی ایران → پورت روی سرور خارج')">
+        <span v-for="(p, k) in c.ports" :key="'t' + k">{{ p.iran === p.remote ? p.iran : p.iran + '→' + p.remote }}</span>
+        <span v-for="(p, k) in c.udp" :key="'u' + k">UDP {{ p.iran === p.remote ? p.iran : p.iran + '→' + p.remote }}</span>
+      </div></div>
     <div class="tcell"><div class="tag">LINK</div><div class="v">{{ c.kind }}</div></div>
     <div class="tcell"><div class="tag">RTT</div><div class="v"><span v-if="c.rtt" class="num">{{ ms(c.rtt) }}</span><span v-else class="faint">—</span></div></div>
     <div class="tcell"><div class="tag">STATUS</div><div class="v">{{ $t(STATE_TEXT[c.st] || c.st) }}</div></div>

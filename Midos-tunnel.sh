@@ -2396,6 +2396,9 @@ setup_kharej() { do_setup "KHAREJ"; }
 # IRAN only:
 #   MIDOS_PEERS     "ip[:label[:slot]][,ip:...]" (required; one entry per KHAREJ)
 #   MIDOS_TCP_PORTS, MIDOS_UDP_PORTS             (optional, forwarded to peers)
+#   MIDOS_PEER_<slot>_TCP, MIDOS_PEER_<slot>_UDP (optional, that peer's own
+#                   ports instead of the shared ones; "12053:2053" = this
+#                   server's 12053 to the peer's 2053)
 #   MIDOS_BALANCE   balance mode                 (optional)
 # KHAREJ only:
 #   MIDOS_IRAN_IP   the IRAN server's public IP  (required)
@@ -2450,7 +2453,13 @@ provision() {
             label=$(echo "$label" | tr -cd '[:alnum:]_-' | cut -c1-14)
             [[ -z "$slot" ]] && slot=$(next_free_index)
             [[ "$slot" =~ ^[0-9]+$ ]] && ((slot >= 1 && slot <= MAX_PEERS)) || { echo "provision: bad slot '$slot' for '$ip'" >&2; return 2; }
-            add_peer "$ip" "$label" "$slot" 1 "$FORWARD_TCP_PORTS" "$FORWARD_UDP_PORTS"
+            # a peer may carry its own ports (MIDOS_PEER_<slot>_TCP/_UDP, set
+            # even when empty); otherwise it takes the shared lists
+            local vt="MIDOS_PEER_${slot}_TCP" vu="MIDOS_PEER_${slot}_UDP" pt="$FORWARD_TCP_PORTS" pu="$FORWARD_UDP_PORTS"
+            [[ -n "${!vt+x}" ]] && pt="${!vt}"
+            [[ -n "${!vu+x}" ]] && pu="${!vu}"
+            validate_ports "$pt" && validate_ports "$pu" || { echo "provision: bad ports for '$ip'" >&2; return 2; }
+            add_peer "$ip" "$label" "$slot" 1 "$pt" "$pu"
             KHAREJ_IP="$ip"
         done
         ((PEER_COUNT > 0)) || { echo "provision: IRAN needs at least one peer in MIDOS_PEERS" >&2; return 2; }

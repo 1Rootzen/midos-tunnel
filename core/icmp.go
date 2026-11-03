@@ -19,6 +19,10 @@ import (
 	"errors"
 	"net"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -196,18 +200,78 @@ func (s *icmpSession) Close() error {
 	return err
 }
 
+var (
+	pingKnob     = "/proc/sys/net/ipv4/icmp_echo_ignore_all"
+	icmpStateDir = "/run/midos-icmp" // one file per running ICMP listener, plus "orig"
+	icmpSeq      atomic.Int32
+	// processAlive reports whether a listener recorded under pid still runs
+	processAlive = func(pid int) bool {
+		b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/cmdline")
+		return err == nil && strings.Contains(string(b), "midos-tunnel")
+	}
+)
+
 // silenceKernelPing sets net.ipv4.icmp_echo_ignore_all=1 and returns a function
-// that restores the previous value. Where the knob does not exist (not Linux,
-// or no permission) it is a no-op - that only happens on a box that will not
-// actually serve ICMP.
+// that undoes it. Several ICMP tunnels can listen on one server, so each one
+// records itself under icmpStateDir and only the last one to stop puts the
+// knob back to the value it had before the first one started. The undo also
+// runs when the process is told to stop. Where the knob does not exist (not
+// Linux) it is a no-op - that only happens on a box that will not serve ICMP.
 func silenceKernelPing() (func(), error) {
-	const path = "/proc/sys/net/ipv4/icmp_echo_ignore_all"
-	prev, err := os.ReadFile(path)
+	prev, err := os.ReadFile(pingKnob)
 	if err != nil {
 		return func() {}, nil
 	}
-	if err := os.WriteFile(path, []byte("1\n"), 0o644); err != nil {
+	if err := os.MkdirAll(icmpStateDir, 0o700); err != nil {
+		return nil, errors.New("icmp: " + err.Error())
+	}
+	orig := filepath.Join(icmpStateDir, "orig")
+	if !otherICMPListeners("") {
+		_ = os.WriteFile(orig, prev, 0o600)
+	}
+	mine := filepath.Join(icmpStateDir, strconv.Itoa(os.Getpid())+"."+strconv.Itoa(int(icmpSeq.Add(1))))
+	if err := os.WriteFile(mine, nil, 0o600); err != nil {
+		return nil, errors.New("icmp: " + err.Error())
+	}
+	if err := os.WriteFile(pingKnob, []byte("1\n"), 0o644); err != nil {
+		_ = os.Remove(mine)
 		return nil, errors.New("icmp: cannot silence kernel ping replies (need root): " + err.Error())
 	}
-	return func() { _ = os.WriteFile(path, prev, 0o644) }, nil
+	var once sync.Once
+	restore := func() {
+		once.Do(func() {
+			_ = os.Remove(mine)
+			if otherICMPListeners(mine) {
+				return
+			}
+			if b, err := os.ReadFile(orig); err == nil {
+				_ = os.WriteFile(pingKnob, b, 0o644)
+			}
+			_ = os.Remove(orig)
+		})
+	}
+	onExit(restore)
+	return restore, nil
+}
+
+// otherICMPListeners reports whether an ICMP listener other than skip is
+// still running, clearing the records of listeners that died without
+// cleaning up.
+func otherICMPListeners(skip string) bool {
+	ents, _ := os.ReadDir(icmpStateDir)
+	alive := false
+	for _, e := range ents {
+		p := filepath.Join(icmpStateDir, e.Name())
+		pid, _, ok := strings.Cut(e.Name(), ".")
+		n, err := strconv.Atoi(pid)
+		if !ok || err != nil || p == skip {
+			continue
+		}
+		if processAlive(n) {
+			alive = true
+		} else {
+			_ = os.Remove(p)
+		}
+	}
+	return alive
 }
