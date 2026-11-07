@@ -10,6 +10,7 @@ import { cableState } from '../lib/fleet.js';
 import PageHead from '../components/PageHead.vue';
 import ServerCard from '../components/ServerCard.vue';
 import AddServerWindow from '../components/AddServerWindow.vue';
+import ReaddressWindow from '../components/ReaddressWindow.vue';
 import GlassWindow from '../components/GlassWindow.vue';
 import AppIcon from '../components/AppIcon.vue';
 import BenchCard from '../topology/BenchCard.vue';
@@ -21,6 +22,7 @@ const fleet = shallowRef(null);
 const bench = shallowRef({ running: {}, results: {} });
 const adding = ref(null); // { node?, watch? } while the add window is open
 const details = ref(null);
+const moving = ref(null); // the server whose IP is being changed
 
 const { refresh } = usePoll(async () => {
   const [f, b] = await Promise.all([api('GET', '/api/fleet'), api('GET', '/api/topology/bench').catch(() => null)]);
@@ -89,7 +91,7 @@ async function remove(n) {
       <div class="fleet-grid">
         <ServerCard v-for="n in servers" :key="n.id" :n="n" :by-id="byId" :links="links" :bench="bench"
           @bench="runBench" @details="details = $event" @install="adding = { node: $event }"
-          @progress="adding = { node: $event, watch: $event.id }" @remove="remove" />
+          @progress="adding = { node: $event, watch: $event.id }" @readdress="moving = $event" @remove="remove" />
         <button class="card fleet-add" @click="adding = {}">
           <AppIcon name="plus" /><b>{{ $t('افزودن سرور ایران یا خارج') }}</b>
           <small>{{ $t('IP و رمز SSH بدهید؛ به‌روزرسانی، نصب پیش‌نیازها و بنچمارک خودکار انجام می‌شود.') }}</small>
@@ -102,6 +104,7 @@ async function remove(n) {
     </template>
 
     <AddServerWindow v-if="adding" :node="adding.node" :watch="adding.watch || ''" @close="adding = null; refresh()" @added="refresh()" />
+    <ReaddressWindow v-if="moving" :node="moving" @close="moving = null; refresh()" @done="refresh()" />
     <GlassWindow v-if="details" :title="$t('بنچمارک {name}', { name: details.label || details.host })" icon="gauge" :width="620" @close="details = null">
       <BenchCard :node="details" :bench="bench" @run="runBench(details)" />
     </GlassWindow>

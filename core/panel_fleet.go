@@ -1893,6 +1893,127 @@ func (s *panelServer) handleFleetEdit(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]any{"ok": true, "results": results})
 }
 
+// handleFleetReaddress moves a server to the new IP its provider gave it and
+// rebuilds every tunnel it takes part in, so both ends point at the new
+// address. Before anything changes, the server must answer at the new IP with
+// the host key pinned when it was added: a mistyped IP, or another machine
+// there, never takes over its tunnels. For the mother, whose address is found
+// on its own, it only rebuilds the tunnels.
+func (s *panelServer) handleFleetReaddress(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID      string `json:"id"`
+		IP      string `json:"ip"`
+		SSHPort int    `json:"ssh_port"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		jsonError(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	req.IP = strings.TrimSpace(req.IP)
+	t := s.loadTopology()
+	n, ok := nodeByID(t, req.ID)
+	if !ok {
+		jsonError(w, http.StatusNotFound, "این سرور پیدا نشد؛ صفحه را تازه کنید")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
+	var results []stepResult
+	old := n.IP
+	if n.Kind != "self" {
+		if n.State != "ready" {
+			jsonError(w, http.StatusBadRequest, "این سرور هنوز نصب نشده است؛ آن را با IP تازه دوباره اضافه کنید")
+			return
+		}
+		if !validHost(req.IP) {
+			jsonError(w, http.StatusBadRequest, "IP سرور معتبر نیست")
+			return
+		}
+		if req.SSHPort < 0 || req.SSHPort > 65535 {
+			jsonError(w, http.StatusBadRequest, "پورت یا کاربر SSH معتبر نیست")
+			return
+		}
+		for _, x := range t.Nodes {
+			if x.ID != n.ID && x.Kind != "self" && x.IP == req.IP {
+				jsonError(w, http.StatusBadRequest, fmt.Sprintf("سرور %s قبلاً با نام «%s» اضافه شده است", req.IP, nodeName(x)))
+				return
+			}
+		}
+		moved := n
+		moved.IP = req.IP
+		if req.SSHPort > 0 {
+			moved.SSHPort = req.SSHPort
+		}
+		out, err := runOut(ctx, fleetExecFor(s, moved), "hostname")
+		res := stepResult{Step: nodeName(n) + " (" + req.IP + ")", OK: err == nil, Output: strings.TrimSpace(out)}
+		if err != nil {
+			if errors.Is(err, errHostKeyChanged) {
+				err = errors.New("سرور روی این IP کلید میزبان دیگری دارد؛ یا IP اشتباه است یا سرور از نو نصب شده (در این صورت آن را با رمز دوباره اضافه کنید)")
+			}
+			res.Error = err.Error()
+			s.audit(r, "fleet-readdress", nodeName(n)+" "+old+" -> "+req.IP+" failed: "+err.Error())
+			jsonError2(w, http.StatusBadGateway, "سرور روی IP تازه در دسترس نیست: "+err.Error(), []stepResult{res})
+			return
+		}
+		results = append(results, res)
+		if err := s.updateTopology(func(t *topology) error {
+			for i := range t.Nodes {
+				if t.Nodes[i].ID == n.ID {
+					t.Nodes[i].IP, t.Nodes[i].SSHPort = moved.IP, moved.SSHPort
+				}
+			}
+			return nil
+		}); err != nil {
+			jsonError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		t = s.loadTopology()
+	}
+
+	// every applied cable of this server, the kernel ones once per Iran hub
+	var firstErr error
+	hubs := map[string]bool{}
+	for _, l := range t.Links {
+		if l.Tunnel == "" || (l.A != n.ID && l.B != n.ID) {
+			continue
+		}
+		var res []stepResult
+		var err error
+		if l.Kind == "kernel" {
+			hub := kernelHub(t, l)
+			if hubs[hub] {
+				continue
+			}
+			hubs[hub] = true
+			res, err = s.applyKernel(ctx, t, hub, kernelGroup(t, hub), l)
+		} else {
+			res, err = s.applyDirect(ctx, t, l)
+		}
+		results = append(results, res...)
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	detail := nodeName(n) + " " + old + " -> " + req.IP
+	if n.Kind == "self" {
+		detail = nodeName(n) + " (rebuild)"
+	}
+	if firstErr != nil {
+		s.audit(r, "fleet-readdress", detail+" failed: "+firstErr.Error())
+		msg := "ساخت دوبارهٔ بعضی تانل‌ها ناموفق بود: "
+		if n.Kind != "self" {
+			msg = "IP ذخیره شد ولی ساخت دوبارهٔ بعضی تانل‌ها ناموفق بود: "
+		}
+		jsonError2(w, http.StatusBadGateway, msg+firstErr.Error(), results)
+		return
+	}
+	s.audit(r, "fleet-readdress", detail)
+	if n.Kind != "self" {
+		s.notify("🔁 IP سرور «" + nodeName(n) + "» از " + old + " به " + req.IP + " تغییر کرد و تانل‌هایش دوباره ساخته شدند")
+	}
+	jsonOK(w, map[string]any{"ok": true, "results": results})
+}
+
 // handleFleetLinks adds several cables in one go - one Iran server to several
 // Kharej servers - and returns their ids; the page then applies each one.
 // With self_role "iran" the mother itself becomes that Iran server.

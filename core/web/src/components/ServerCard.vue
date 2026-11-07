@@ -15,7 +15,7 @@ const props = defineProps({
   links: { type: Array, required: true },
   bench: { type: Object, required: true },
 });
-const emit = defineEmits(['bench', 'details', 'install', 'progress', 'remove']);
+const emit = defineEmits(['bench', 'details', 'install', 'progress', 'readdress', 'remove']);
 
 const self = computed(() => props.n.kind === 'self');
 const st = computed(() => props.n.stats);
@@ -145,7 +145,11 @@ const DOT = { up: 'ok', warn: 'warn', down: 'bad', off: '', draft: '', missing: 
       <div v-if="!tunnels.length" class="faint">{{ $t('با سروری تانل نیست') }} — <router-link to="/topology">{{ $t('در طراحی شبکه کابل بکشید') }}</router-link></div>
     </div>
 
+    <div v-if="self && tunnels.length" class="actions srv-actions">
+      <button class="btn small" @click="emit('readdress', n)"><AppIcon name="redo" /> {{ $t('ساخت دوبارهٔ تانل‌ها') }}</button>
+    </div>
     <div v-if="!self" class="actions srv-actions">
+      <button v-if="n.state === 'ready'" class="btn small" @click="emit('readdress', n)"><AppIcon name="net" /> {{ $t('تغییر IP') }}</button>
       <button v-if="n.state === 'ready'" class="btn small" @click="emit('install', n)"><AppIcon name="redo" /> {{ $t('نصب و به‌روزرسانی دوباره') }}</button>
       <button class="btn small danger" :disabled="n.state === 'installing'" @click="emit('remove', n)"><AppIcon name="trash" /> {{ $t('حذف سرور') }}</button>
     </div>

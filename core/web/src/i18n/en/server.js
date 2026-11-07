@@ -47,6 +47,8 @@ export default {
   'این کابل هنوز اعمال نشده؛ آن را در طراحی شبکه تنظیم و اعمال کنید': 'This cable is not applied yet; set it up and apply it in the network designer',
   'نوع کابل باید مستقیم، معکوس یا کرنلی باشد': 'The cable type must be direct, reverse or kernel',
   'پورت حامل یا تعداد حامل معتبر نیست': 'The carrier port or carrier count is not valid',
+  'این سرور پیدا نشد؛ صفحه را تازه کنید': 'This server was not found; reload the page',
+  'این سرور هنوز نصب نشده است؛ آن را با IP تازه دوباره اضافه کنید': 'This server is not installed yet; add it again with the new IP',
   'نقش این سرور در طراحی شبکه «ایران» نیست و کابل دارد؛ آن را در طراحی شبکه درست کنید': "This server's role in the network designer is not Iran and it has cables; fix that in the designer",
 
   // fleet: install steps
@@ -109,6 +111,12 @@ export const patterns = [
   [/^ساخت تانل کرنلی روی «(.+)» ناموفق بود$/, 'Building the kernel tunnel on “$1” failed'],
   [/^کابل حذف شد ولی پاک‌سازی بعضی سرورها ناموفق بود: ([\s\S]*)$/, 'The cable was removed, but cleaning up some servers failed: $1'],
   [/^کلید سرور مادر از سرور پاک نشد: ([\s\S]*)$/, "The mother server's key was not removed from the server: $1"],
+
+  // a server's new IP
+  [/^سرور روی IP تازه در دسترس نیست: سرور روی این IP کلید میزبان دیگری دارد؛.*$/, 'A different host key answers at this IP: either the IP is wrong or the server was reinstalled (then add it again with its password)'],
+  [/^سرور روی IP تازه در دسترس نیست: (.*)$/, 'The server does not answer at the new IP: $1'],
+  [/^IP ذخیره شد ولی ساخت دوبارهٔ بعضی تانل‌ها ناموفق بود: (.*)$/, 'The IP was saved, but rebuilding some tunnels failed: $1'],
+  [/^ساخت دوبارهٔ بعضی تانل‌ها ناموفق بود: (.*)$/, 'Rebuilding some tunnels failed: $1'],
 
   // editing a cable
   [/^پورت "(.*)" برای تانل کرنلی معتبر نیست \(عدد، بازه مثل 2000-3000 یا تغییر شماره مثل 37826:37825\)$/, 'Port "$1" is not valid for a kernel tunnel (a number, a range like 2000-3000, or a remap like 37826:37825)'],

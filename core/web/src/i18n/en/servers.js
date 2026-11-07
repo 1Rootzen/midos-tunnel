@@ -104,4 +104,22 @@ export default {
   'IP و رمز SSH بدهید؛ به‌روزرسانی، نصب پیش‌نیازها و بنچمارک خودکار انجام می‌شود.': 'Enter its IP and SSH password; updating, installing prerequisites and the benchmark happen automatically.',
   '{n} سرور در طراحی شبکه هست که هنوز اضافه نشده:': '{n} server(s) in the network designer not added yet:',
   'بنچمارک {name}': 'Benchmark {name}',
+
+  // a server's new IP (ReaddressWindow)
+  'تغییر IP': 'Change IP',
+  'تغییر IP سرور {name}': 'Change the IP of {name}',
+  'ساخت دوبارهٔ تانل‌های {name}': 'Rebuild the tunnels of {name}',
+  'ساخت دوبارهٔ تانل‌ها': 'Rebuild tunnels',
+  'وقتی شرکت ارائه‌دهنده IP سرور را عوض کرد، IP تازه را اینجا بدهید. پنل سرور را روی IP تازه بررسی می‌کند (باید همان سرور باشد) و همهٔ تانل‌هایش را روی هر دو سر با IP تازه دوباره می‌سازد.': "When the provider changes the server's IP, enter the new one here. The panel checks the server at the new IP (it must be the same server) and rebuilds all of its tunnels on both ends with the new IP.",
+  'IP فعلی': 'Current IP',
+  'IP تازه': 'New IP',
+  'آدرس سرور مادر خودکار پیدا می‌شود ({ip}). اگر IP آن عوض شده، تانل‌هایش را اینجا دوباره بسازید.': "The mother server's address is detected automatically ({ip}). If its IP changed, rebuild its tunnels here.",
+  'تانل‌هایی که دوباره ساخته می‌شوند': 'Tunnels that will be rebuilt',
+  'این سرور تانل اعمال‌شده‌ای ندارد.': 'This server has no applied tunnels.',
+  'کاربران این تانل‌ها چند ثانیه قطع می‌شوند؛ تانل کرنلی یک سرور ایران با همهٔ سرورهای خارجش دوباره ساخته می‌شود.': "These tunnels' users are cut off for a few seconds; an Iran server's kernel tunnel is rebuilt with all of its abroad servers.",
+  'تغییر IP و ساخت دوبارهٔ تانل‌ها': 'Change IP and rebuild tunnels',
+  'در حال ساخت دوبارهٔ تانل‌ها…': 'Rebuilding the tunnels…',
+  'در حال بررسی سرور روی IP تازه و ساخت دوبارهٔ تانل‌ها…': 'Checking the server at the new IP and rebuilding the tunnels…',
+  'تانل‌ها دوباره ساخته شدند': 'The tunnels were rebuilt',
+  'IP تغییر کرد و تانل‌ها دوباره ساخته شدند': 'The IP was changed and the tunnels were rebuilt',
 };

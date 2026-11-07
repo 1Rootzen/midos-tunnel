@@ -18,6 +18,7 @@ import GlassWindow from '../components/GlassWindow.vue';
 import AppIcon from '../components/AppIcon.vue';
 import AddServerWindow from '../components/AddServerWindow.vue';
 import CableEditWindow from '../components/CableEditWindow.vue';
+import ReaddressWindow from '../components/ReaddressWindow.vue';
 import BenchCard from '../topology/BenchCard.vue';
 import '../styles/topology.css';
 
@@ -38,6 +39,7 @@ const dropping = ref(false);
 const loaded = ref(false);
 const adding = ref(null); // { node, watch? } while the add window is open
 const editCable = ref(''); // the applied cable whose edit window is open
+const moving = ref(null); // the server whose IP is being changed
 let engine = null;
 
 const raw = () => toRaw(topo);
@@ -495,9 +497,10 @@ onBeforeUnmount(() => {
           <span class="pill" :class="(NODE_STATE[selNode.state || ''] || [])[0]">{{ $t((NODE_STATE[selNode.state || ''] || [])[1]) }}</span></div>
         <FormField :label="$t('نام')"><input v-model="selNode.label" type="text" maxlength="40" @input="changed" /></FormField>
         <FormField :label="$t('نوع')"><SegControl :model-value="selNode.kind" :options="[['iran', $t('ایران')], ['kharej', $t('خارج')]]" @update:model-value="setNodeKind" /></FormField>
-        <FormField :label="$t('IP عمومی')" :hint="selNode.state ? $t('آدرس سرور اضافه‌شده ثابت است.') : ''">
+        <FormField :label="$t('IP عمومی')" :hint="selNode.state ? $t('برای IP تازه از دکمهٔ «تغییر IP» استفاده کنید؛ تانل‌ها هم دوباره ساخته می‌شوند.') : ''">
           <input v-model.trim="selNode.ip" type="text" dir="ltr" placeholder="203.0.113.10" :disabled="!!selNode.state" @input="changed" />
         </FormField>
+        <button v-if="selNode.state === 'ready'" class="btn small" @click="moving = { ...selNode }"><AppIcon name="net" /> {{ $t('تغییر IP') }}</button>
 
         <template v-if="!selNode.state || selNode.state === 'error'">
           <div v-if="selNode.state === 'error'" class="hint warn">{{ selNode.error }}</div>
@@ -579,6 +582,7 @@ onBeforeUnmount(() => {
 
     <AddServerWindow v-if="adding" :node="adding.node" :watch="adding.watch" @close="adding = null; refresh()" @added="refresh()" />
     <CableEditWindow v-if="editCable" :id="editCable" @close="editCable = ''" @saved="refresh().catch(() => {})" />
+    <ReaddressWindow v-if="moving" :node="moving" @close="moving = null" @done="refresh().catch(() => {})" />
 
     <GlassWindow v-if="jobs.open" :title="$t(jobs.title)" icon="play" :width="700" :closable="jobs.done" @close="jobs.open = false">
       <div class="tp-jobs">

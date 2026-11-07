@@ -68,7 +68,7 @@ export default {
 
   // inspector: another server
   'نوع': 'Type',
-  'آدرس سرور اضافه‌شده ثابت است.': "An added server's address cannot be changed.",
+  'برای IP تازه از دکمهٔ «تغییر IP» استفاده کنید؛ تانل‌ها هم دوباره ساخته می‌شوند.': 'For a new IP use the Change IP button; the tunnels are rebuilt too.',
   'این سرور هنوز فقط روی نقشه است. با «افزودن و نصب» سرور مادر وارد آن می‌شود، سیستم را به‌روز و همهٔ پیش‌نیازهای تانل را خودکار نصب می‌کند.': 'This server is only on the map so far. With "Add and install", the mother server logs in to it, updates the system and installs every tunnel prerequisite automatically.',
   'تلاش دوباره': 'Try again',
   'افزودن و نصب خودکار': 'Add and auto-install',
