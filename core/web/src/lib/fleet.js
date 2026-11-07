@@ -1,5 +1,6 @@
 import { trName } from './constants.js';
 import { t } from './i18n.js';
+import { split } from './format.js';
 
 // The fleet: the mother server and the Iran / Kharej servers it manages. These
 // helpers are shared by the servers page and the network designer. The Persian
@@ -78,7 +79,7 @@ export const cableType = (l) => (l.kind === 'direct' && l.reverse ? 'reverse' : 
 // transports whose carrier rides UDP; the rest open a TCP port
 export const UDP_CARRIERS = ['kcp', 'quic', 'dns'];
 
-const portTerms = (list) => String(list || '').split(/[\s,،]+/).filter(Boolean);
+const portTerms = split;
 
 // portPairs reads a port field as "Iran port -> port on the other server"
 // pairs for display: "443" is 443 -> 443, "37826:37825" is 37826 -> 37825,

@@ -112,6 +112,8 @@ export const patterns = [
   [/^کابل حذف شد ولی پاک‌سازی بعضی سرورها ناموفق بود: ([\s\S]*)$/, 'The cable was removed, but cleaning up some servers failed: $1'],
   [/^کلید سرور مادر از سرور پاک نشد: ([\s\S]*)$/, "The mother server's key was not removed from the server: $1"],
 
+  [/^پورت "(.*)" کابل «(.*)» برای تانل کرنلی معتبر نیست \(عدد، بازه مثل 2000-3000 یا تغییر شماره مثل 37826:37825\)$/, 'Port "$1" of the cable to "$2" is not valid for a kernel tunnel (a number, a range like 2000-3000, or a remap like 37826:37825)'],
+
   // a server's new IP
   [/^سرور روی IP تازه در دسترس نیست: سرور روی این IP کلید میزبان دیگری دارد؛.*$/, 'A different host key answers at this IP: either the IP is wrong or the server was reinstalled (then add it again with its password)'],
   [/^سرور روی IP تازه در دسترس نیست: (.*)$/, 'The server does not answer at the new IP: $1'],

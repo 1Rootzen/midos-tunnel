@@ -43,7 +43,12 @@ export function randomKey() {
   return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
 }
 
-// split turns "443, 8443:2053 8000-8010" (or Persian commas) into a list.
-export const split = (v) => String(v || '').split(/[\s,،]+/).map((x) => x.trim()).filter(Boolean);
+// split turns "443, 8443:2053 8000-8010" into a list. Like the panel's
+// server it also takes Persian commas and semicolons between entries, and
+// Persian or Arabic digits ("۳۷۸۲۵").
+export const split = (v) => String(v || '')
+  .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0))
+  .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660))
+  .split(/[\s,،;]+/).map((x) => x.trim()).filter(Boolean);
 
 export { i18n };

@@ -1189,8 +1189,20 @@ func (s *panelServer) handleFleet(w http.ResponseWriter, r *http.Request) {
 
 var defaultCarrierPort = map[string]int{"tls": 443, "ws": 443, "tcp": 8080, "stealth": 8443, "kcp": 4000, "quic": 8443, "grpc": 2096, "dns": 53}
 
+// splitList splits a list a person typed: entries may be separated by Latin or
+// Persian commas, semicolons or spaces, and Persian or Arabic digits count as
+// digits ("37825،62623" is two ports).
 func splitList(s string) []string {
-	return strings.FieldsFunc(s, func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
+	s = strings.Map(func(r rune) rune {
+		switch {
+		case r >= '۰' && r <= '۹':
+			return '0' + (r - '۰')
+		case r >= '٠' && r <= '٩':
+			return '0' + (r - '٠')
+		}
+		return r
+	}, s)
+	return strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == '،' || r == ';' || unicode.IsSpace(r) })
 }
 
 func carrierProto(tr string) string {
@@ -1529,6 +1541,13 @@ func (s *panelServer) applyKernel(ctx context.Context, t topology, hubID string,
 			}
 			if l.Slot == 0 {
 				return nil, errors.New("بیش از ۳۲ سرور خارج روی یک سرور ایران ممکن نیست")
+			}
+		}
+		// a port the kernel installer would refuse stops the build here, with
+		// the server named, before any server is touched
+		for _, p := range append(splitList(l.Ports), splitList(l.UDPPorts)...) {
+			if !kernelPortsRE.MatchString(p) {
+				return nil, fmt.Errorf("پورت %q کابل «%s» برای تانل کرنلی معتبر نیست (عدد، بازه مثل 2000-3000 یا تغییر شماره مثل 37826:37825)", p, nodeName(e.node))
 			}
 		}
 		l.PSK, l.Mode, l.Tunnel = psk, firstNonEmpty(tmpl.Mode, "esp"), "kernel"

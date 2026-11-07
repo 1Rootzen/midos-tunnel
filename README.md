@@ -82,7 +82,7 @@ The installer installs the system packages, downloads the `midos-tunnel` binary 
 
 | Variable | Effect |
 |---|---|
-| `MIDOS_VERSION=v2.6.5` | install a specific release instead of the latest |
+| `MIDOS_VERSION=v2.6.6` | install a specific release instead of the latest |
 | `MIDOS_MIRROR=https://…` | download the release files from a mirror |
 | `MIDOS_PANEL_PORT=2053` | panel port on first install (random otherwise) |
 | `MIDOS_NO_KERNEL=1` | skip the kernel-tunnel base |
@@ -185,7 +185,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/1Rootzen/midos-tunnel/main/u
 
 | متغیر | کاربرد |
 |---|---|
-| `MIDOS_VERSION=v2.6.5` | نصب یک نسخهٔ مشخص به‌جای آخرین نسخه |
+| `MIDOS_VERSION=v2.6.6` | نصب یک نسخهٔ مشخص به‌جای آخرین نسخه |
 | `MIDOS_MIRROR=https://…` | دانلود فایل‌های ریلیز از یک میرور |
 | `MIDOS_PANEL_PORT=2053` | پورت پنل در نصب اول (در غیر این صورت تصادفی) |
 | `MIDOS_NO_KERNEL=1` | آماده نکردن پایهٔ تانل کرنلی |

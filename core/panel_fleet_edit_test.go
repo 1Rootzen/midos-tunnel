@@ -226,6 +226,44 @@ func TestFleetKernelPortsPerLocation(t *testing.T) {
 	}
 }
 
+// Ports typed with a Persian comma or Persian digits are read as the user
+// meant them; a port the installer would refuse stops the build before any
+// server is touched.
+func TestFleetKernelPortsAsTyped(t *testing.T) {
+	if got := strings.Join(splitList("37825،62623; ۱۸۴۴۳ ٥٤٢٩٤,  2000-3000"), "|"); got != "37825|62623|18443|54294|2000-3000" {
+		t.Fatalf("splitList: %s", got)
+	}
+	f := useFakeFleet(t)
+	p := newTestPanel(t)
+	p.login(testPassword)
+	ir := addServer(t, p, "iran", "198.51.100.10")
+	k1 := addServer(t, p, "kharej", "198.51.100.21")
+	_ = p.s.updateTopology(func(t *topology) error {
+		t.Links = append(t.Links, topoLink{ID: "lfa", A: ir, B: k1, Kind: "kernel", Mode: "esp", Ports: "37825،62623", UDPPorts: "۳۷۸۲۵"})
+		return nil
+	})
+	if w := p.do("POST", "/api/fleet/apply", map[string]any{"id": "lfa"}, true); w.Code != http.StatusOK {
+		t.Fatalf("apply: %d %s", w.Code, w.Body)
+	}
+	hub, _, _ := f.host("198.51.100.10").ran(" provision")
+	if !strings.Contains(hub, "_TCP='37825,62623'") || !strings.Contains(hub, "_UDP='37825'") {
+		t.Fatalf("hub provision: %s", hub)
+	}
+
+	_ = p.s.updateTopology(func(t *topology) error {
+		t.Links[0].Ports = "37825=10.0.0.5:2096"
+		return nil
+	})
+	f.host("198.51.100.10").cmds = nil
+	w := p.do("POST", "/api/fleet/apply", map[string]any{"id": "lfa"}, true)
+	if w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "37825=10.0.0.5:2096") {
+		t.Fatalf("bad kernel port: %d %s", w.Code, w.Body)
+	}
+	if len(f.host("198.51.100.10").cmds) != 0 {
+		t.Fatal("a refused build touched the hub")
+	}
+}
+
 func TestIranPorts(t *testing.T) {
 	got := iranPorts("443, 2000-2002, 37826:37825, 9000-9001:9000, junk")
 	for _, p := range []int{443, 2000, 2001, 2002, 37826, 9000, 9001} {
