@@ -308,7 +308,7 @@ func serveLocal(cfg *Config, pool *carrierPool, local net.Conn, remote uint16) {
 	if err := writeTCPOpen(st, remote, user); err != nil {
 		return
 	}
-	pipeCounted(local, st, stats.port("tcp", remote))
+	pipeCounted(local, st, stats.port("tcp", remote), cfg.stallLimit())
 }
 
 // pipe copies in both directions and returns when either side is done.

@@ -110,6 +110,8 @@ type Config struct {
 	Shape     bool `json:"shape"`
 	RotateSec int  `json:"rotate_sec"`
 
+	StallSec int `json:"stall_sec"`
+
 	// loopback address of a small JSON status endpoint, read by the web panel
 	StatsListen string `json:"stats_listen"`
 }
