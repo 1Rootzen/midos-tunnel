@@ -10,6 +10,7 @@
 !/docs/
 !/core/
 !/.github/
+!/.gitleaks.toml
 
 # build output and local files inside the public tree
 /core/midos-tunnel
