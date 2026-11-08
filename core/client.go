@@ -57,6 +57,8 @@ func newCarrierPool(cfg *Config) *carrierPool {
 	return p
 }
 
+const muxV2RecvBuffer = 1 << 30
+
 func smuxConfig(cfg *Config) *smux.Config {
 	t := cfg.tune()
 	c := smux.DefaultConfig()
@@ -64,6 +66,10 @@ func smuxConfig(cfg *Config) *smux.Config {
 	c.KeepAliveTimeout = 60 * time.Second
 	c.MaxReceiveBuffer = t.recvBuf
 	c.MaxStreamBuffer = t.streamBuf
+	if cfg.MuxVersion == 2 {
+		c.Version = 2
+		c.MaxReceiveBuffer = muxV2RecvBuffer
+	}
 	return c
 }
 

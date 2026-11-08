@@ -37,9 +37,10 @@ func loopbackPair(t *testing.T) (net.Conn, net.Conn) {
 	return a, r.c
 }
 
-func echoAfterStall(t *testing.T, stall time.Duration, wait time.Duration) bool {
+func echoAfterStall(t *testing.T, stall time.Duration, wait time.Duration, version int) bool {
 	t.Helper()
 	cfg := smux.DefaultConfig()
+	cfg.Version = version
 	cfg.MaxReceiveBuffer = 256 << 10
 	cfg.MaxStreamBuffer = 64 << 10
 	cfg.KeepAliveDisabled = true
@@ -108,13 +109,13 @@ type zeroReader struct{}
 func (zeroReader) Read(p []byte) (int, error) { return len(p), nil }
 
 func TestStalledStreamBlocksCarrierWithoutGuard(t *testing.T) {
-	if echoAfterStall(t, 0, 4*time.Second) {
+	if echoAfterStall(t, 0, 4*time.Second, 1) {
 		t.Fatal("expected the stalled stream to block the whole carrier when the guard is off")
 	}
 }
 
 func TestStallGuardFreesCarrier(t *testing.T) {
-	if !echoAfterStall(t, 2*time.Second, 10*time.Second) {
+	if !echoAfterStall(t, 2*time.Second, 10*time.Second, 1) {
 		t.Fatal("a stalled stream must be closed so other streams on the carrier keep working")
 	}
 }
@@ -127,6 +128,38 @@ func TestStallLimit(t *testing.T) {
 	for _, c := range cases {
 		if got := (&Config{StallSec: c.sec}).stallLimit(); got != c.want {
 			t.Fatalf("stall_sec=%d: got %s want %s", c.sec, got, c.want)
+		}
+	}
+}
+
+func TestMuxV2SlowStreamDoesNotBlockCarrier(t *testing.T) {
+	if !echoAfterStall(t, 0, 4*time.Second, 2) {
+		t.Fatal("with per-stream flow control a slow stream must not block other streams, even without the stall guard")
+	}
+}
+
+func TestMuxVersionConfig(t *testing.T) {
+	v1 := smuxConfig(&Config{Preset: "turbo"})
+	if v1.Version != 1 || v1.MaxReceiveBuffer != 16<<20 {
+		t.Fatalf("default must stay on v1 with the preset buffer: %+v", v1)
+	}
+	v2 := smuxConfig(&Config{Preset: "turbo", MuxVersion: 2})
+	if v2.Version != 2 || v2.MaxReceiveBuffer != muxV2RecvBuffer || v2.MaxStreamBuffer != 2<<20 {
+		t.Fatalf("v2 must keep the stream window and lift the session cap: %+v", v2)
+	}
+	if err := smux.VerifyConfig(v2); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []int{0, 1, 2} {
+		c := &Config{Mode: "client", PSK: testPSK, Server: "1.2.3.4:4000", Transport: "kcp", Ports: []string{"443"}, MuxVersion: v}
+		if err := c.normalize(); err != nil {
+			t.Fatalf("mux_version %d must be accepted: %v", v, err)
+		}
+	}
+	for _, v := range []int{-1, 3} {
+		c := &Config{Mode: "client", PSK: testPSK, Server: "1.2.3.4:4000", Transport: "kcp", Ports: []string{"443"}, MuxVersion: v}
+		if err := c.normalize(); err == nil {
+			t.Fatalf("mux_version %d must be rejected", v)
 		}
 	}
 }
