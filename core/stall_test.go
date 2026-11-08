@@ -138,13 +138,34 @@ func TestMuxV2SlowStreamDoesNotBlockCarrier(t *testing.T) {
 	}
 }
 
+// The v2 carrier cap follows the server's memory instead of a fixed 1 GB.
+func TestMuxV2RecvBufferFollowsRAM(t *testing.T) {
+	old := memTotal
+	t.Cleanup(func() { memTotal = old })
+	turbo := presets["turbo"] // v1 cap 16 MB
+	for _, c := range []struct {
+		ram  uint64
+		want int
+	}{
+		{900 << 20, 64 << 20}, // 1/16 is 56 MB, but never below 4 x 16 MB
+		{2 << 30, 128 << 20},  // 1/16 of 2 GB
+		{16 << 30, 256 << 20}, // capped at 256 MB
+		{0, 64 << 20},         // unknown RAM: as for 1 GB
+	} {
+		memTotal = func() uint64 { return c.ram }
+		if got := muxV2RecvBuffer(turbo); got != c.want {
+			t.Errorf("ram %d MB: cap %d MB, want %d MB", c.ram>>20, got>>20, c.want>>20)
+		}
+	}
+}
+
 func TestMuxVersionConfig(t *testing.T) {
 	v1 := smuxConfig(&Config{Preset: "turbo"})
 	if v1.Version != 1 || v1.MaxReceiveBuffer != 16<<20 {
 		t.Fatalf("default must stay on v1 with the preset buffer: %+v", v1)
 	}
 	v2 := smuxConfig(&Config{Preset: "turbo", MuxVersion: 2})
-	if v2.Version != 2 || v2.MaxReceiveBuffer != muxV2RecvBuffer || v2.MaxStreamBuffer != 2<<20 {
+	if v2.Version != 2 || v2.MaxReceiveBuffer != muxV2RecvBuffer(presets["turbo"]) || v2.MaxStreamBuffer != 2<<20 {
 		t.Fatalf("v2 must keep the stream window and lift the session cap: %+v", v2)
 	}
 	if err := smux.VerifyConfig(v2); err != nil {
