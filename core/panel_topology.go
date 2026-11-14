@@ -50,14 +50,28 @@ type topoLink struct {
 	Preset    string `json:"preset,omitempty"`
 	Carriers  int    `json:"carriers,omitempty"`
 	// direct cables: the multiplexer version both ends use (0 or 1 = v1, 2)
-	MuxVersion int    `json:"mux_version,omitempty"`
-	Mode       string `json:"mode,omitempty"`   // kernel: esp, espudp, gre, fou, ipsec
-	Tunnel     string `json:"tunnel,omitempty"` // the tunnel this cable created
+	MuxVersion int `json:"mux_version,omitempty"`
+	cableStealth
+	Mode   string `json:"mode,omitempty"`   // kernel: esp, espudp, gre, fou, ipsec
+	Tunnel string `json:"tunnel,omitempty"` // the tunnel this cable created
 
 	// kernel cables of one Iran hub share a passphrase; each Kharej end keeps
 	// its slot so rebuilding the hub never renumbers the others
 	PSK  string `json:"psk,omitempty"`
 	Slot int    `json:"slot,omitempty"`
+}
+
+// cableStealth is what a direct cable does against filtering: the server name
+// its TLS hello carries, splitting that hello, renewing carriers, the site
+// probes are handed to (decoy), camouflage and padding. The panel sets each on
+// the end that uses it.
+type cableStealth struct {
+	ServerName  string `json:"server_name,omitempty"`
+	TLSFragment bool   `json:"tls_fragment,omitempty"`
+	RotateSec   int    `json:"rotate_sec,omitempty"`
+	Decoy       string `json:"decoy,omitempty"`
+	Camouflage  bool   `json:"camouflage,omitempty"`
+	Pad         bool   `json:"pad,omitempty"`
 }
 
 type topology struct {

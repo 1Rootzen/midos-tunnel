@@ -693,8 +693,9 @@ func peerConfig(c *Config, host string) (*Config, []string, error) {
 		TLSFragment: c.TLSFragment, Shape: c.Shape, RotateSec: c.RotateSec,
 		KCPDataShards: c.KCPDataShards, KCPParityShards: c.KCPParityShards,
 		ProxyProtocol: c.ProxyProtocol, StallSec: c.StallSec,
-		// both ends must speak the same multiplexer version
-		MuxVersion:  c.MuxVersion,
+		// both ends must speak the same multiplexer version, and both take
+		// part in camouflage and padding
+		MuxVersion: c.MuxVersion, Camouflage: c.Camouflage, Pad: c.Pad,
 		StatsListen: fmt.Sprintf("127.0.0.1:%d", 39000+int(fnvHash(c.Name)%900)),
 	}
 	maps, err := c.parsePorts()
@@ -718,6 +719,11 @@ func peerConfig(c *Config, host string) (*Config, []string, error) {
 		p.Mode, p.Targets = "server", "127.0.0.1"
 	} else {
 		p.Mode = "client"
+	}
+	// the decoy (or camouflage's real site) belongs to the listening side:
+	// when this side dials, that is the peer
+	if c.dials() {
+		p.Decoy = c.Decoy
 	}
 
 	var open []string

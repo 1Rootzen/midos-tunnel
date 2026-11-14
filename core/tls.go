@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -78,6 +79,12 @@ func dialTLS(cfg *Config, ep Endpoint) (net.Conn, net.Conn, error) {
 		}
 	} else {
 		c = utls.UClient(hc, tc, helloID(cfg.Fingerprint))
+		if cfg.Camouflage {
+			if err := camoSign(c, cfg.PSK); err != nil {
+				_ = raw.Close()
+				return nil, nil, err
+			}
+		}
 	}
 
 	// Some networks let the TCP handshake through and then silently drop the
@@ -98,6 +105,24 @@ func dialTLS(cfg *Config, ep Endpoint) (net.Conn, net.Conn, error) {
 		return nil, nil, fmt.Errorf("%s: %w", ep.Server, err)
 	}
 	return ws, raw, nil
+}
+
+// camoSign builds the browser ClientHello now and writes the camouflage
+// signature into its 32-byte session id - in the parsed hello and in the raw
+// bytes that go on the wire, which share the field at offset 39 (handshake
+// header 4, version 2, random 32, session id length 1).
+func camoSign(c *utls.UConn, psk string) error {
+	if err := c.BuildHandshakeState(); err != nil {
+		return fmt.Errorf("browser hello: %w", err)
+	}
+	h := c.HandshakeState.Hello
+	if h == nil || len(h.SessionId) != camoTokenLen || len(h.Raw) < 39+camoTokenLen || h.Raw[38] != camoTokenLen {
+		return errors.New("camouflage: this browser hello has no 32-byte session id; use the chrome fingerprint")
+	}
+	tok := camoToken(psk, time.Now())
+	copy(h.SessionId, tok)
+	copy(h.Raw[39:], tok)
+	return nil
 }
 
 // wsHelloConn builds a browser ClientHello whose ALPN offers only http/1.1.
@@ -138,9 +163,12 @@ func serverTLSConfig(cfg *Config) (*tls.Config, error) {
 		}
 	}
 	protos := []string{"h2", "http/1.1"}
-	if cfg.WSPath != "" {
+	if cfg.WSPath != "" || cfg.Decoy != "" {
 		// A CDN forwarding a WebSocket must stay on HTTP/1.1, the only version
-		// the upgrade exists in; a site without h2 is entirely ordinary.
+		// the upgrade exists in. So must a prober handed to the decoy: having
+		// agreed on h2 it would send the HTTP/2 preface, which an ordinary
+		// HTTP/1.1 site answers with nothing. A site without h2 is entirely
+		// ordinary, and the tunnel's own client does not depend on the choice.
 		protos = []string{"http/1.1"}
 	}
 	return &tls.Config{

@@ -194,6 +194,11 @@ func dialAuthenticated(cfg *Config, good *atomic.Int32) (*carrier, error) {
 				lastErr = fmt.Errorf("%s %s: %w", ep.Transport, ep.Server, err)
 				continue
 			}
+			if err := padCarrier(cfg, c, true); err != nil {
+				_ = c.Close()
+				lastErr = fmt.Errorf("%s %s: padding: %w", ep.Transport, ep.Server, err)
+				continue
+			}
 			if old := good.Swap(int32(idx)); int(old) != idx {
 				log.Printf("switched to endpoint %d (%s %s)", idx+1, ep.Transport, ep.Server)
 			}
@@ -241,9 +246,18 @@ func listenCarriers(cfg *Config, accept func(*carrier)) error {
 		if cfg.WSPath != "" {
 			log.Printf("websocket sessions accepted on the secret path")
 		}
+		if cfg.Camouflage {
+			log.Printf("camouflage: other connections go to %s", cfg.camoTarget())
+		}
 		start("tls", func() error {
 			return acceptLoop(ln, func(raw net.Conn) {
-				conn, err := openTLSSession(cfg, raw, tc)
+				tlsRaw := raw
+				if cfg.Camouflage {
+					if tlsRaw = camoGate(cfg, raw); tlsRaw == nil {
+						return // not a tunnel client: handed to the real site
+					}
+				}
+				conn, err := openTLSSession(cfg, tlsRaw, tc)
 				if err != nil {
 					_ = raw.Close()
 					return

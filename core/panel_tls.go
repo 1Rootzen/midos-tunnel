@@ -63,7 +63,23 @@ func panelTLS(cfg *PanelConfig) (*tls.Config, func(), error) {
 		t.Certificates = []tls.Certificate{cert}
 		return t, nil, nil
 	}
-	t.GetCertificate = m.GetCertificate
+	// The domain gets its Let's Encrypt certificate. Anything else - the
+	// panel opened by IP, or a name that is not the domain - gets the panel's
+	// own certificate rather than a refused handshake, so the panel stays
+	// reachable when the domain's DNS points elsewhere or the server's IP
+	// changed.
+	own, ownErr := tls.LoadX509KeyPair(cfg.CertPEM, cfg.KeyPEM)
+	if ownErr != nil {
+		if gen, err := selfSigned("localhost"); err == nil {
+			own, ownErr = gen, nil
+		}
+	}
+	t.GetCertificate = func(h *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		if ownErr == nil && !strings.EqualFold(strings.TrimSuffix(h.ServerName, "."), cfg.ACMEDomain) {
+			return &own, nil
+		}
+		return m.GetCertificate(h)
+	}
 	if cfg.ACMEMethod == "tls-alpn-01" {
 		t.NextProtos = []string{"h2", "http/1.1", acme.ALPNProto}
 		return t, nil, nil

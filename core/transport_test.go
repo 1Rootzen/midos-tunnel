@@ -300,6 +300,20 @@ func TestDecoyServesProbes(t *testing.T) {
 	if !bytes.HasPrefix(buf[:n], []byte("DECOY:GET /")) {
 		t.Fatalf("probe was not sent to the decoy with its bytes: %q", buf[:n])
 	}
+
+	// a browser offers h2 first; with a decoy the server must settle on
+	// HTTP/1.1, or the prober would send the HTTP/2 preface to an HTTP/1.1 site
+	h2, err := tls.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", tunnelPort), &tls.Config{InsecureSkipVerify: true, ServerName: "www.example.com", NextProtos: []string{"h2", "http/1.1"}})
+	if err != nil {
+		t.Fatalf("tls dial offering h2: %v", err)
+	}
+	defer h2.Close()
+	if p := h2.ConnectionState().NegotiatedProtocol; p != "http/1.1" {
+		t.Fatalf("with a decoy the server agreed on %q, want http/1.1", p)
+	}
+	if tc, _ := serverTLSConfig(&Config{ServerName: "www.example.com"}); tc.NextProtos[0] != "h2" {
+		t.Fatalf("without a decoy h2 stays first: %v", tc.NextProtos)
+	}
 }
 
 // Without a decoy, an unauthenticated connection is simply dropped.

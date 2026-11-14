@@ -300,6 +300,79 @@ func TestMuxVersionReachesBothEnds(t *testing.T) {
 	}
 }
 
+// A cable's stealth settings land on the end that uses each: the dialing Iran
+// end splits its hello, renews carriers and signs; the listening Kharej end
+// keeps the decoy; both pad. Turning the cable into a kernel one clears them.
+func TestFleetCableStealthReachesTheRightEnd(t *testing.T) {
+	f := useFakeFleet(t)
+	p := newTestPanel(t)
+	p.login(testPassword)
+	ir := addServer(t, p, "iran", "198.51.100.10")
+	kh := addServer(t, p, "kharej", "198.51.100.20")
+	_ = p.s.updateTopology(func(t *topology) error {
+		t.Links = append(t.Links, topoLink{ID: "lst", A: ir, B: kh, Kind: "direct", Transport: "tls", Port: 443, Ports: "3308",
+			cableStealth: cableStealth{ServerName: "www.microsoft.com", TLSFragment: true, RotateSec: 600, Decoy: "www.microsoft.com:443", Camouflage: true, Pad: true}})
+		return nil
+	})
+	if w := p.do("POST", "/api/fleet/apply", map[string]any{"id": "lst"}, true); w.Code != http.StatusOK {
+		t.Fatalf("apply: %d %s", w.Code, w.Body)
+	}
+	ic, kc := lastConfig(t, f.host("198.51.100.10")), lastConfig(t, f.host("198.51.100.20"))
+	if !ic.TLSFragment || ic.RotateSec != 600 || !ic.Camouflage || !ic.Pad || ic.ServerName != "www.microsoft.com" || ic.Decoy != "" {
+		t.Fatalf("iran (dialing) end: %+v", ic)
+	}
+	if kc.Decoy != "www.microsoft.com:443" || !kc.Camouflage || !kc.Pad || kc.Listen != "0.0.0.0:443" {
+		t.Fatalf("kharej (listening) end: %+v", kc)
+	}
+
+	// the same options through the edit API, here on a reverse cable: Iran
+	// listens and keeps the decoy, Kharej dials
+	w := p.do("POST", "/api/fleet/edit", map[string]any{"id": "lst", "kind": "direct", "reverse": true, "transport": "tls", "port": 8443, "ports": "3308",
+		"server_name": "www.microsoft.com", "tls_fragment": true, "rotate_sec": 300, "decoy": "www.microsoft.com:443", "camouflage": true, "pad": true}, true)
+	if w.Code != http.StatusOK {
+		t.Fatalf("edit: %d %s", w.Code, w.Body)
+	}
+	ic, kc = lastConfig(t, f.host("198.51.100.10")), lastConfig(t, f.host("198.51.100.20"))
+	if ic.Decoy != "www.microsoft.com:443" || !ic.Camouflage || ic.Listen != "0.0.0.0:8443" || kc.RotateSec != 300 || !kc.TLSFragment || !kc.Camouflage {
+		t.Fatalf("reverse ends: iran %+v kharej %+v", ic, kc)
+	}
+	// camouflage is dropped on a ws cable (no signature there), not refused
+	if w := p.do("POST", "/api/fleet/edit", map[string]any{"id": "lst", "kind": "direct", "transport": "ws", "port": 443, "ports": "3308", "camouflage": true, "pad": true}, true); w.Code != http.StatusOK {
+		t.Fatalf("ws edit: %d %s", w.Code, w.Body)
+	}
+	if ic := lastConfig(t, f.host("198.51.100.10")); ic.Camouflage || !ic.Pad {
+		t.Fatalf("ws cable: camouflage %v pad %v", ic.Camouflage, ic.Pad)
+	}
+	// a bad rotation is refused before anything runs
+	if w := p.do("POST", "/api/fleet/edit", map[string]any{"id": "lst", "kind": "direct", "transport": "tls", "ports": "3308", "rotate_sec": 10}, true); w.Code != http.StatusBadRequest {
+		t.Fatalf("rotate_sec 10 accepted: %d", w.Code)
+	}
+	if w := p.do("POST", "/api/fleet/edit", map[string]any{"id": "lst", "kind": "kernel", "mode": "esp", "ports": "3308", "camouflage": true}, true); w.Code != http.StatusOK {
+		t.Fatalf("to kernel: %d %s", w.Code, w.Body)
+	}
+	if l, _ := linkByID(p.s.loadTopology(), "lst"); l.cableStealth != (cableStealth{}) {
+		t.Fatalf("a kernel cable kept stealth settings: %+v", l.cableStealth)
+	}
+}
+
+// The "set up the other side" config of a single tunnel carries camouflage
+// and padding, and the decoy when the other side is the listening one.
+func TestPeerConfigCarriesStealth(t *testing.T) {
+	c := &Config{Mode: "client", PSK: testPSK, Name: "x", Endpoints: []Endpoint{{"tls", "198.51.100.20:443"}}, Ports: []string{"3308"},
+		ServerName: "www.microsoft.com", TLSFragment: true, RotateSec: 600, Decoy: "www.microsoft.com:443", Camouflage: true, Pad: true}
+	p, _, err := peerConfig(c, "198.51.100.10")
+	if err != nil || !p.Camouflage || !p.Pad || p.Decoy != "www.microsoft.com:443" || p.ServerName != "www.microsoft.com" || p.Listen == "" {
+		t.Fatalf("peer of a dialing client: %+v %v", p, err)
+	}
+	if _, err := validated(p); err != nil {
+		t.Fatalf("the peer config is not valid: %v", err)
+	}
+	c.Reverse, c.Endpoints, c.Listen = true, nil, "0.0.0.0:443"
+	if p, _, _ := peerConfig(c, "198.51.100.10"); p.Decoy != "" || !p.Camouflage {
+		t.Fatalf("peer of a listening client must not take the decoy: %+v", p)
+	}
+}
+
 func TestIranPorts(t *testing.T) {
 	got := iranPorts("443, 2000-2002, 37826:37825, 9000-9001:9000, junk")
 	for _, p := range []int{443, 2000, 2001, 2002, 37826, 9000, 9001} {

@@ -41,7 +41,25 @@ export const LISTENERS = [
 export const MUX_VERSIONS = [[1, 'نسخهٔ ۱ (پیش‌فرض)'], [2, 'نسخهٔ ۲: کنترل جریان جدا برای هر کاربر']];
 export const MUX_HELP = 'در نسخهٔ ۲ کاربر کند بقیهٔ کاربران همان حامل را کند نمی‌کند. پنل هر دو سر را هم‌نسخه می‌کند؛ هر دو سرور باید ۲.۶.۷ یا جدیدتر باشند.';
 
-export const PRESETS =[['balance', 'متعادل'], ['turbo', 'توربو'], ['aggressive', 'تهاجمی'], ['throughput', 'حداکثر عبور']];
+// applyMaxStealth sets a direct cable (fields as in the panel's cables) to the
+// strongest setup against filtering the relay offers: TLS on 443 with a
+// well-known server name, the hello split, camouflage with that site's real
+// certificate for probers, padding, and carriers renewed every 10 minutes.
+export const STEALTH_SNI = 'www.microsoft.com';
+export function applyMaxStealth(l) {
+  if ((l.transport || 'tls') !== 'tls') { l.transport = 'tls'; l.port = 443; }
+  l.port = l.port || 443;
+  if ((Number(l.carriers) || 0) < 4) l.carriers = 4;
+  l.server_name = l.server_name || STEALTH_SNI;
+  l.decoy = l.server_name + ':443';
+  Object.assign(l, { tls_fragment: true, camouflage: true, pad: true, rotate_sec: 600 });
+}
+
+// Tunnel kinds a filter tells apart from ordinary traffic at a glance; a
+// server that carries them is the first to lose its international access.
+export const DETECTABLE_HELP = 'این نوع تانل برای DPI به‌راحتی قابل تشخیص است و می‌تواند باعث ایران‌اکسس شدن سرور شود؛ برای امنیت بیشتر تانل مستقیم یا معکوس با TLS و «حداکثر امنیت» را انتخاب کنید.';
+
+export const PRESETS = [['balance','متعادل'], ['turbo', 'توربو'], ['aggressive', 'تهاجمی'], ['throughput', 'حداکثر عبور']];
 export const presetName = (v) => t((PRESETS.find((p) => p[0] === v) || PRESETS[0])[1]);
 
 export const STATE_FA = { active: 'فعال', inactive: 'متوقف', failed: 'خطا', activating: 'در حال شروع', deactivating: 'در حال توقف', unknown: 'نامشخص' };

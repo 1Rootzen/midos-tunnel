@@ -19,6 +19,8 @@ export function serialize(topo) {
       id: l.id, a: l.a, b: l.b, kind: l.kind, transport: l.transport || undefined, port: l.port || undefined,
       ports: l.ports || undefined, udp_ports: l.udp_ports || undefined, reverse: l.reverse || undefined,
       preset: l.preset || undefined, carriers: l.carriers || undefined, mux_version: l.mux_version > 1 ? l.mux_version : undefined,
+      server_name: l.server_name || undefined, tls_fragment: l.tls_fragment || undefined, rotate_sec: l.rotate_sec || undefined,
+      decoy: l.decoy || undefined, camouflage: l.camouflage || undefined, pad: l.pad || undefined,
       mode: l.mode || undefined, tunnel: l.tunnel || undefined,
     })),
   };

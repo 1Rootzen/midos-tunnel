@@ -1,9 +1,10 @@
 <script setup>
 import { computed } from 'vue';
-import { TRANSPORTS, PRESETS, DEF_PORT, MUX_VERSIONS, MUX_HELP } from '../lib/constants.js';
+import { TRANSPORTS, PRESETS, DEF_PORT, MUX_VERSIONS, MUX_HELP, DETECTABLE_HELP } from '../lib/constants.js';
 import { KERNEL_MODES, cableType } from '../lib/fleet.js';
 import SegControl from './SegControl.vue';
 import FormField from './FormField.vue';
+import StealthFields from './StealthFields.vue';
 
 // The settings of a cable between an Iran and a Kharej server: its kind,
 // transport, carrier port, speed and forwarded ports. It edits the object it
@@ -36,6 +37,8 @@ function setTransport() {
   else if (lastTransport === 'icmp' && (Number(l.carriers) || 0) <= 1) l.carriers = 2;
   lastTransport = l.transport;
 }
+// "maximum stealth" may switch the transport itself
+function noteTransport() { lastTransport = props.l.transport; }
 </script>
 
 <template>
@@ -67,8 +70,11 @@ function setTransport() {
       <FormField :label="$t('مالتی‌پلکسر')" :hint="$t(MUX_HELP)">
         <select v-model.number="l.mux_version"><option v-for="[v, n] in MUX_VERSIONS" :key="v" :value="v">{{ $t(n) }}</option></select>
       </FormField>
+      <p v-if="l.transport === 'icmp'" class="hint warn">{{ $t(DETECTABLE_HELP) }}</p>
+      <StealthFields :l="l" @change="noteTransport" />
     </template>
     <template v-else>
+      <p class="hint warn">{{ $t(DETECTABLE_HELP) }}</p>
       <FormField :label="$t('نوع تانل کرنلی')" :hint="$t('نوع تانل کرنلی برای همهٔ کابل‌های کرنلی یک سرور ایران یکی است؛ پورت‌های هر کابل جداست.')">
         <select v-model="l.mode"><option v-for="[v, n] in KERNEL_MODES" :key="v" :value="v">{{ $t(n) }}</option></select>
       </FormField>

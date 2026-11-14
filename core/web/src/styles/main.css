@@ -438,3 +438,6 @@ canvas.chart { display: block; width: 100%; height: 170px; }
 .srv-specs { display: grid; grid-template-columns: max-content 1fr; gap: 5px 14px; margin: 0; font-size: 12.5px; padding: 10px 12px; border-radius: 10px; background: rgba(255, 255, 255, 0.025); border: 1px solid var(--line); }
 .srv-specs dt { color: var(--ti-3); }
 .srv-specs dd { margin: 0; color: var(--ti); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* a section title with a button beside it (stealth settings) */
+.stealth-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

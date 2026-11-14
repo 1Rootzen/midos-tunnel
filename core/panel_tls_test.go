@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -48,6 +50,21 @@ func TestPanelTLS(t *testing.T) {
 	}
 	if tc.GetCertificate == nil || start == nil {
 		t.Fatal("http-01 should use GetCertificate and return a starter")
+	}
+	// opened by IP (or with no name at all) the panel still answers, with its
+	// own certificate, instead of refusing the handshake
+	own, _ := tls.LoadX509KeyPair(cfg.CertPEM, cfg.KeyPEM)
+	for _, name := range []string{"", "203.0.113.7", "other.example.com"} {
+		got, err := tc.GetCertificate(&tls.ClientHelloInfo{ServerName: name})
+		if err != nil || got == nil || !bytes.Equal(got.Certificate[0], own.Certificate[0]) {
+			t.Fatalf("name %q: want the panel's own certificate, got %v", name, err)
+		}
+	}
+	// the domain itself still goes to Let's Encrypt (no certificate cached in
+	// this test, so the manager is asked and fails offline rather than
+	// returning the panel's own one)
+	if got, _ := tc.GetCertificate(&tls.ClientHelloInfo{ServerName: "panel.example.com"}); got != nil && bytes.Equal(got.Certificate[0], own.Certificate[0]) {
+		t.Fatal("the domain must not get the panel's own certificate")
 	}
 	for _, p := range tc.NextProtos {
 		if p == acme.ALPNProto {

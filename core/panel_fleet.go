@@ -1256,8 +1256,13 @@ func fleetDirectConfigs(l topoLink, name, iranHost, kharejHost string) (ic, kc *
 	c := &Config{
 		Mode: "client", Reverse: l.Reverse, PSK: randomToken(24), Name: name,
 		Preset: firstNonEmpty(l.Preset, "balance"), Carriers: carriers, MuxVersion: l.MuxVersion,
-		ServerName: "www.cloudflare.com", Fingerprint: "chrome", Insecure: true,
-		Ports: splitList(l.Ports), UDPPorts: splitList(l.UDPPorts),
+		ServerName: firstNonEmpty(strings.TrimSpace(l.ServerName), "www.cloudflare.com"), Fingerprint: "chrome", Insecure: true,
+		TLSFragment: l.TLSFragment, RotateSec: l.RotateSec, Pad: l.Pad,
+		Decoy: strings.TrimSpace(l.Decoy),
+		// camouflage is a tls-transport feature: a WebSocket hello cannot
+		// carry the signature, and behind a CDN it would mean nothing
+		Camouflage: l.Camouflage && tr == "tls",
+		Ports:      splitList(l.Ports), UDPPorts: splitList(l.UDPPorts),
 		StatsListen: fmt.Sprintf("127.0.0.1:%d", 38000+int(fnvHash(name)%900)),
 	}
 	if len(c.Ports) == 0 && len(c.UDPPorts) == 0 {
@@ -1288,6 +1293,9 @@ func fleetDirectConfigs(l topoLink, name, iranHost, kharejHost string) (ic, kc *
 	}
 	if kc, err = validated(p); err != nil {
 		return nil, nil, nil, nil, err
+	}
+	if ic.dials() {
+		ic.Decoy = "" // it went to the listening Kharej end
 	}
 	maps, _ := ic.parsePorts()
 	for _, m := range maps {
@@ -1731,11 +1739,13 @@ func cableSettings(l, req topoLink) topoLink {
 	if l.Kind == "kernel" {
 		l.Mode = firstNonEmpty(req.Mode, "esp")
 		l.Transport, l.Port, l.Reverse, l.Preset, l.Carriers, l.MuxVersion = "", 0, false, "", 0, 0
+		l.cableStealth = cableStealth{}
 		return l
 	}
 	l.Mode = ""
 	l.Transport, l.Port, l.Reverse = firstNonEmpty(req.Transport, "tls"), req.Port, req.Reverse
 	l.Preset, l.Carriers, l.MuxVersion = firstNonEmpty(req.Preset, "balance"), req.Carriers, req.MuxVersion
+	l.cableStealth = req.cableStealth
 	return l
 }
 

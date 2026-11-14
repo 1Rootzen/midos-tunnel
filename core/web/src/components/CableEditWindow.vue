@@ -33,7 +33,8 @@ onMounted(async () => {
     const [ir, kh] = a.role === 'kharej' ? [b, a] : [a, b];
     ends.value = nodeName(ir) + ' ' + fwd() + ' ' + nodeName(kh);
     Object.assign(l, { kind: x.kind, ports: x.ports || '', udp_ports: x.udp_ports || '', reverse: !!x.reverse, mode: x.mode || 'esp',
-      transport: x.transport || 'tls', port: x.port || '', preset: x.preset || 'balance', carriers: x.carriers || 2, mux_version: x.mux_version || 1 });
+      transport: x.transport || 'tls', port: x.port || '', preset: x.preset || 'balance', carriers: x.carriers || 2, mux_version: x.mux_version || 1,
+      server_name: x.server_name || '', tls_fragment: !!x.tls_fragment, rotate_sec: x.rotate_sec || 0, decoy: x.decoy || '', camouflage: !!x.camouflage, pad: !!x.pad });
     was = cableType(x);
     loaded.value = true;
   } catch (e) { fail(e); emit('close'); }

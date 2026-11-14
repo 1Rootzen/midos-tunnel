@@ -110,6 +110,17 @@ type Config struct {
 	Shape     bool `json:"shape"`
 	RotateSec int  `json:"rotate_sec"`
 
+	// both sides, tls transport: camouflage. The dialing side hides a
+	// signature (from the PSK) in its ClientHello; the listening side lets
+	// only such hellos reach its own TLS server and hands every other
+	// connection, untouched and before any handshake, to a real site (decoy,
+	// or server_name:443), so a prober meets that site's genuine certificate.
+	Camouflage bool `json:"camouflage"`
+	// both sides, tls and ws transports: pad the carrier's traffic with
+	// random bytes inside the TLS session, so record sizes do not mirror the
+	// user's packets. Both ends must agree.
+	Pad bool `json:"pad"`
+
 	StallSec int `json:"stall_sec"`
 
 	MuxVersion int `json:"mux_version"`
@@ -385,6 +396,14 @@ func (c *Config) normalize() error {
 		if _, _, err := net.SplitHostPort(c.Decoy); err != nil {
 			return fmt.Errorf("decoy must be host:port: %w", err)
 		}
+	}
+	if c.Camouflage && !c.dials() && c.Listen != "" && c.camoTarget() == "" {
+		return errors.New("camouflage needs the real site to imitate: decoy (host:443) or server_name")
+	}
+	if c.Camouflage && c.WSPath != "" {
+		// a WebSocket hello carries no signature, so the gate would turn
+		// every WebSocket carrier away
+		return errors.New("camouflage works with the tls transport, not with ws_path / a CDN")
 	}
 	if !c.dials() {
 		if c.Listen == "" && c.TCPListen == "" && c.StealthListen == "" && c.KCPListen == "" && c.QUICListen == "" && c.ICMPListen == "" && c.GRPCListen == "" && c.SSHListen == "" && c.DNSListen == "" {

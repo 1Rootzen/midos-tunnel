@@ -218,6 +218,21 @@ export default {
   'ساخت تانل‌ها روی همهٔ سرورها': 'Build the tunnels on every server',
   'مشاهدهٔ تانل‌ها': 'View tunnels',
 
+  // stealth settings (StealthFields, TunnelForm, lib/constants.js)
+  'امنیت در برابر فیلترینگ': 'Protection against filtering',
+  'حداکثر امنیت': 'Maximum stealth',
+  '«حداکثر امنیت» ترنسپورت را TLS روی ۴۴۳ می‌کند و همهٔ گزینه‌های زیر را روشن می‌کند؛ سرعت کمی کم می‌شود ولی تشخیص تانل بسیار سخت‌تر است.': '"Maximum stealth" switches the transport to TLS on 443 and turns on every option below; a little speed is lost, but the tunnel becomes much harder to recognise.',
+  'نام سرور در دست‌دهی TLS (SNI)': 'Server name in the TLS handshake (SNI)',
+  'سایتی معروف که در ایران باز است؛ مثل www.microsoft.com': 'A well-known site that is open in Iran, such as www.microsoft.com',
+  'سایت واقعی برای کاوشگرها': 'Real site shown to probers',
+  'با استتار: همان سایت روی ۴۴۳ (مثل www.microsoft.com:443)؛ بدون استتار: نسخهٔ HTTP آن (:80)': 'With camouflage: that site on 443 (like www.microsoft.com:443); without camouflage: its HTTP version (:80)',
+  'استتار: هر کس بدون کلید تانل وصل شود، گواهی و صفحهٔ واقعی همان سایت را می‌بیند (فقط ترنسپورت TLS)': "Camouflage: anyone who connects without the tunnel's key sees that site's real certificate and pages (TLS transport only)",
+  'قطعه‌قطعه کردن ClientHello تا نام سرور خوانده نشود': 'Split the ClientHello so the server name cannot be read',
+  'پرکردن تصادفی ترافیک تا اندازهٔ بسته‌ها الگوی کاربر را لو ندهد (TLS و WebSocket)': "Pad traffic randomly so packet sizes do not give away the user's pattern (TLS and WebSocket)",
+  'نو کردن اتصال‌ها (ثانیه)': 'Renew connections (seconds)',
+  '۰ = خاموش؛ وگرنه حداقل ۳۰. اتصال‌های طولانی به یک IP خارجی کمتر به چشم می‌آیند.': '0 = off; otherwise at least 30. Long-lived connections to one foreign IP stand out less this way.',
+  'این نوع تانل برای DPI به‌راحتی قابل تشخیص است و می‌تواند باعث ایران‌اکسس شدن سرور شود؛ برای امنیت بیشتر تانل مستقیم یا معکوس با TLS و «حداکثر امنیت» را انتخاب کنید.': 'DPI recognises this tunnel type easily, and it can get the server restricted to Iran-only access; for more safety choose a direct or reverse tunnel with TLS and "Maximum stealth".',
+
   // the multiplexer version (lib/constants.js MUX_VERSIONS)
   'مالتی‌پلکسر': 'Multiplexer',
   'نسخهٔ ۱ (پیش‌فرض)': 'Version 1 (default)',

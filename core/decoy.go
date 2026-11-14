@@ -44,6 +44,11 @@ func serveDecoy(cfg *Config, c net.Conn, prefix []byte) {
 func (s authSink) ok(cfg *Config, c *carrier) bool {
 	err := serverHandshake(c, cfg.PSK)
 	if err == nil {
+		if err := padCarrier(cfg, c, false); err != nil {
+			log.Printf("padding with %s: %v (both ends need \"pad\")", c.RemoteAddr(), err)
+			_ = c.Close()
+			return false
+		}
 		return true
 	}
 	if p, isProbe := err.(errProbe); isProbe {

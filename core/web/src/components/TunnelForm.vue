@@ -3,7 +3,7 @@ import { ref, reactive, computed, onMounted } from 'vue';
 import { api } from '../lib/api.js';
 import { fail, toast } from '../lib/toast.js';
 import { randomKey, split } from '../lib/format.js';
-import { TRANSPORTS, LISTENERS, PRESETS, MUX_VERSIONS } from '../lib/constants.js';
+import { TRANSPORTS, LISTENERS, PRESETS, MUX_VERSIONS, DETECTABLE_HELP, STEALTH_SNI } from '../lib/constants.js';
 import SegControl from './SegControl.vue';
 import FormField from './FormField.vue';
 import AppIcon from './AppIcon.vue';
@@ -26,7 +26,7 @@ const f = reactive({
   targets: '127.0.0.1', sni: 'www.cloudflare.com', fp: 'chrome', carriers: 2, wsPath: '', hostHdr: '', httpListen: '',
   dataSh: 10, parSh: 3, proxy: false, decoy: '', grpcSvc: '',
   sshUser: '', sshPass: '', sshKey: '', sshPort: 22, sshRemote: '',
-  tlsFrag: false, shape: false, rotate: 0, mux: 1,
+  tlsFrag: false, shape: false, rotate: 0, mux: 1, camo: false, pad: false,
 });
 if (props.kind === 'kernel') f.direction = 'kernel';
 const endpoints = ref([{ transport: 'tls', server: '' }]);
@@ -63,7 +63,7 @@ function load(c) {
     dataSh: c.kcp_data_shards ?? 10, parSh: c.kcp_parity_shards ?? 3, proxy: !!c.proxy_protocol, decoy: c.decoy || '',
     grpcSvc: c.grpc_service || '', sshUser: c.ssh_user || '', sshPass: c.ssh_password || '', sshKey: c.ssh_key || '',
     sshPort: c.ssh_port || 22, sshRemote: c.ssh_remote || '', tlsFrag: !!c.tls_fragment, shape: !!c.shape, rotate: c.rotate_sec || 0,
-    mux: c.mux_version || 1,
+    mux: c.mux_version || 1, camo: !!c.camouflage, pad: !!c.pad,
   });
   const eps = c.endpoints && c.endpoints.length ? c.endpoints : c.server ? [{ transport: c.transport || 'tls', server: c.server }] : [{ transport: 'tls', server: '' }];
   endpoints.value = eps.map((e) => ({ transport: e.transport || 'tls', server: e.server || '' }));
@@ -71,6 +71,17 @@ function load(c) {
     l.on = !!c[l.key];
     if (c[l.key] && l.tr !== 'icmp') l.port = Number(portOf(c[l.key])) || l.port;
   }
+}
+
+// The strongest setup against filtering this form offers: TLS with a
+// well-known server name and a browser fingerprint, the hello split,
+// camouflage, padding and carriers renewed every 10 minutes.
+function maxStealth() {
+  if (!f.sni || f.sni === 'www.cloudflare.com') f.sni = STEALTH_SNI;
+  Object.assign(f, { fp: 'chrome', tlsFrag: true, camo: true, pad: true, rotate: 600, decoy: f.sni + ':443' });
+  if ((Number(f.carriers) || 0) < 4) f.carriers = 4;
+  for (const e of endpoints.value) e.transport = 'tls';
+  for (const l of listeners.value) if (l.key === 'listen') l.on = true;
 }
 
 function build() {
@@ -81,7 +92,7 @@ function build() {
     ws_path: f.wsPath.trim(), host: f.hostHdr.trim(), http_listen: f.httpListen.trim(),
     kcp_data_shards: Number(f.dataSh), kcp_parity_shards: Number(f.parSh),
     proxy_protocol: f.proxy, insecure_tls: true, decoy: f.decoy.trim(), grpc_service: f.grpcSvc.trim(),
-    tls_fragment: f.tlsFrag, shape: f.shape, rotate_sec: Number(f.rotate) || 0,
+    tls_fragment: f.tlsFrag, shape: f.shape, rotate_sec: Number(f.rotate) || 0, camouflage: f.camo, pad: f.pad,
     mux_version: Number(f.mux) === 2 ? 2 : 0,
   });
   delete c.server; delete c.transport;
@@ -110,6 +121,7 @@ function build() {
   if (f.mode === 'server') c.targets = f.targets.trim() || '127.0.0.1'; else delete c.targets;
   for (const k of Object.keys(c)) if (c[k] === '' || (Array.isArray(c[k]) && !c[k].length)) delete c[k];
   if (!c.mux_version) delete c.mux_version;
+  for (const k of ['camouflage', 'pad']) if (!c[k]) delete c[k];
   return c;
 }
 const preview = computed(() => JSON.stringify(build(), null, 2));
@@ -156,6 +168,7 @@ onMounted(async () => {
         <FormField :label="$t('نوع تانل')" :hint="$t(DIR_HELP[f.direction])">
           <SegControl v-model="f.direction" :options="DIRECTIONS" />
         </FormField>
+        <p v-if="isKernel" class="hint warn">{{ $t(DETECTABLE_HELP) }}</p>
         <template v-if="!isMulti">
         <FormField :label="$t('پورت‌های TCP')" :hint="isKernel ? $t('پورت‌هایی که از تانل کرنلی رد می‌شوند؛ مثلاً 443, 8443 (خالی = همه)') : (f.mode === 'client' ? $t('مثال: 443 یا 443:2053 (تغییر شماره) یا 8000-8010 (رنج) یا 443=10.0.0.5:2096 (مقصد دلخواه)') : $t('پورت‌های سرویس روی این سرور'))">
           <input v-model="f.ports" type="text" dir="ltr" placeholder="443, 8443:2053, 8000-8010" />
@@ -244,7 +257,13 @@ onMounted(async () => {
           <input v-model="f.decoy" type="text" dir="ltr" placeholder="example.com:443" />
         </FormField>
         <label class="check"><input v-model="f.proxy" type="checkbox" /> {{ $t('ارسال IP واقعی کاربر به سرویس (PROXY v2) — باید در xray هم فعال شود') }}</label>
-        <div class="section-title">{{ $t('ضد DPI و استتار') }}</div>
+        <div class="stealth-head">
+          <div class="section-title">{{ $t('ضد DPI و استتار') }}</div>
+          <button type="button" class="btn small" @click="maxStealth"><AppIcon name="shield" /> {{ $t('حداکثر امنیت') }}</button>
+        </div>
+        <p class="hint">{{ $t('«حداکثر امنیت» ترنسپورت را TLS روی ۴۴۳ می‌کند و همهٔ گزینه‌های زیر را روشن می‌کند؛ سرعت کمی کم می‌شود ولی تشخیص تانل بسیار سخت‌تر است.') }}</p>
+        <label class="check"><input v-model="f.camo" type="checkbox" /> {{ $t('استتار: هر کس بدون کلید تانل وصل شود، گواهی و صفحهٔ واقعی همان سایت را می‌بیند (فقط ترنسپورت TLS)') }}</label>
+        <label class="check"><input v-model="f.pad" type="checkbox" /> {{ $t('پرکردن تصادفی ترافیک تا اندازهٔ بسته‌ها الگوی کاربر را لو ندهد (TLS و WebSocket)') }}</label>
         <label class="check"><input v-model="f.tlsFrag" type="checkbox" /> {{ $t('قطعه‌قطعه‌کردن ClientHello (شکستن SNI؛ فقط سمتی که وصل می‌شود)') }}</label>
         <label class="check"><input v-model="f.shape" type="checkbox" /> {{ $t('شکل‌دهی ترافیک: پر کردن فریم‌های Stealth با بایت تصادفی') }}</label>
         <FormField :label="$t('چرخش اتصال (ثانیه)')" :hint="$t('۰ = خاموش؛ وگرنه هر چند ثانیه حامل‌ها نو می‌شوند (حداقل ۳۰؛ فقط سمتی که وصل می‌شود)')">

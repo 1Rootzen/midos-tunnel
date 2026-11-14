@@ -7,7 +7,7 @@ import { fail, toast } from '../lib/toast.js';
 import { confirmBox } from '../lib/confirm.js';
 import { split, bytes, fa } from '../lib/format.js';
 import { t, i18n, pct } from '../lib/i18n.js';
-import { TRANSPORTS, PRESETS, MUX_VERSIONS, MUX_HELP } from '../lib/constants.js';
+import { TRANSPORTS, PRESETS, MUX_VERSIONS, MUX_HELP, DETECTABLE_HELP } from '../lib/constants.js';
 import { NODE_STATE, roleOf, nodeName, cableState, cableRtt, localPorts } from '../lib/fleet.js';
 import { createEngine, KIND, CABLE, KERNEL_MODES, snap, cableType } from '../topology/engine.js';
 import { DEF_PORT, STATE_TEXT, uid, serialize, cableLabel, benchSummary } from '../topology/model.js';
@@ -19,6 +19,7 @@ import AppIcon from '../components/AppIcon.vue';
 import AddServerWindow from '../components/AddServerWindow.vue';
 import CableEditWindow from '../components/CableEditWindow.vue';
 import ReaddressWindow from '../components/ReaddressWindow.vue';
+import StealthFields from '../components/StealthFields.vue';
 import BenchCard from '../topology/BenchCard.vue';
 import '../styles/topology.css';
 
@@ -71,7 +72,8 @@ const liveById = () => {
   for (const n of topo.nodes) if (!m[n.id]) m[n.id] = { ...n, role: role(n) };
   return m;
 };
-const CABLE_KEYS = ['kind', 'transport', 'port', 'ports', 'udp_ports', 'reverse', 'preset', 'carriers', 'mux_version', 'mode', 'tunnel'];
+const CABLE_KEYS = ['kind', 'transport', 'port', 'ports', 'udp_ports', 'reverse', 'preset', 'carriers', 'mux_version', 'mode', 'tunnel',
+  'server_name', 'tls_fragment', 'rotate_sec', 'decoy', 'camouflage', 'pad'];
 const linkState = (l) => cableState(l, liveById());
 const linkRtt = (l) => cableRtt(l, liveById());
 
@@ -562,8 +564,11 @@ onBeforeUnmount(() => {
           <FormField :label="$t('مالتی‌پلکسر')" :hint="$t(MUX_HELP)">
             <select :value="selLink.mux_version || 1" :disabled="!!selLink.tunnel" @change="selLink.mux_version = Number($event.target.value); save()"><option v-for="[v, n] in MUX_VERSIONS" :key="v" :value="v">{{ $t(n) }}</option></select>
           </FormField>
+          <p v-if="selLink.transport === 'icmp'" class="hint warn">{{ $t(DETECTABLE_HELP) }}</p>
+          <StealthFields :l="selLink" :disabled="!!selLink.tunnel" @change="changed" />
         </template>
         <template v-else>
+          <p class="hint warn">{{ $t(DETECTABLE_HELP) }}</p>
           <FormField :label="$t('نوع تانل کرنلی')" :hint="$t('نوع تانل کرنلی برای همهٔ کابل‌های کرنلی یک سرور ایران یکی است؛ پورت‌های هر کابل جداست.')">
             <select v-model="selLink.mode" :disabled="!!selLink.tunnel" @change="changed"><option v-for="[v, t] in KERNEL_MODES" :key="v" :value="v">{{ $t(t) }}</option></select>
           </FormField>
