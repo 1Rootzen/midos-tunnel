@@ -5,9 +5,9 @@
 #  Removes EVERY trace of the tunnel (any version, any old name) from a server,
 #  even when the manager script itself is missing or broken:
 #
-#      bash <(curl -fsSL https://raw.githubusercontent.com/1Rootzen/midos-tunnel/main/uninstall.sh)
-#      bash <(curl -fsSL https://raw.githubusercontent.com/1Rootzen/midos-tunnel/main/uninstall.sh) --yes       # no prompt
-#      bash <(curl -fsSL https://raw.githubusercontent.com/1Rootzen/midos-tunnel/main/uninstall.sh) --dry-run   # preview
+#      bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/uninstall.sh)
+#      bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/uninstall.sh) --yes       # no prompt
+#      bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/uninstall.sh) --dry-run   # preview
 #
 #  It is deliberately SURGICAL: it only ever deletes objects it can prove are
 #  ours. It never flushes a whole iptables table, and it never touches x-ui,

@@ -2,7 +2,7 @@
 # ============================================================================
 #  Midos Tunnel - one-line installer
 #
-#      bash <(curl -fsSL https://raw.githubusercontent.com/1Rootzen/midos-tunnel/main/install.sh)
+#      bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/install.sh)
 #
 #  Installs everything the panel and its tunnels need, without asking anything:
 #  system packages, the midos-tunnel binary (checksum-verified, from the latest

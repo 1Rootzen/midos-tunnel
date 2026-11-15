@@ -21,7 +21,7 @@ Direct, reverse and kernel tunnels · fleet management from one "mother" server 
 ## Install in one line
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/1Rootzen/midos-tunnel/main/install.sh)
+bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/install.sh)
 ```
 
 Run it as root on a Linux server. It asks nothing, shows a progress bar, and ends with the panel link, user name and password.
@@ -69,13 +69,13 @@ Run it as root on a Linux server. It asks nothing, shows a progress bar, and end
 
 ```bash
 # install, or update to the latest release (an existing panel keeps its address and password)
-bash <(curl -fsSL https://raw.githubusercontent.com/1Rootzen/midos-tunnel/main/install.sh)
-
-# the same installer from the release, if raw.githubusercontent.com is blocked
 bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/install.sh)
 
+# the same installer through the jsDelivr mirror, if github.com is slow or blocked
+bash <(curl -fsSL https://cdn.jsdelivr.net/gh/1Rootzen/midos-tunnel@main/install.sh)
+
 # remove everything Midos Tunnel installed (preview first with --dry-run)
-bash <(curl -fsSL https://raw.githubusercontent.com/1Rootzen/midos-tunnel/main/uninstall.sh)
+bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/uninstall.sh)
 ```
 
 The installer installs the system packages, downloads the `midos-tunnel` binary and checks its SHA-256, prepares the kernel-tunnel base (modules, BBR, forwarding) and starts the panel as the `midos-tunnel-panel` service. It opens the panel port in `ufw` / `firewalld` if one is active. It never flushes firewall tables and never touches x-ui, xray, SSH or other software.
@@ -88,7 +88,7 @@ The installer installs the system packages, downloads the `midos-tunnel` binary 
 | `MIDOS_NO_KERNEL=1` | skip the kernel-tunnel base |
 | `MIDOS_RESET_PASSWORD=1` | on an update, also print a new panel password |
 
-Example: `MIDOS_PANEL_PORT=2053 bash <(curl -fsSL https://raw.githubusercontent.com/1Rootzen/midos-tunnel/main/install.sh)`
+Example: `MIDOS_PANEL_PORT=2053 bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/install.sh)`
 
 Useful commands on the server:
 
@@ -178,13 +178,13 @@ Pull requests are welcome.
 
 ```bash
 # نصب یا به‌روزرسانی به آخرین نسخه (پنل موجود آدرس و رمزش را نگه می‌دارد)
-bash <(curl -fsSL https://raw.githubusercontent.com/1Rootzen/midos-tunnel/main/install.sh)
-
-# اگر raw.githubusercontent.com در دسترس نبود، همان نصب‌کننده از ریلیز
 bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/install.sh)
 
+# اگر github.com کند یا بسته بود، همان نصب‌کننده از آینهٔ jsDelivr
+bash <(curl -fsSL https://cdn.jsdelivr.net/gh/1Rootzen/midos-tunnel@main/install.sh)
+
 # حذف کامل (اول با --dry-run پیش‌نمایش بگیرید)
-bash <(curl -fsSL https://raw.githubusercontent.com/1Rootzen/midos-tunnel/main/uninstall.sh)
+bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/uninstall.sh)
 ```
 
 نصب‌کننده بسته‌های سیستمی را نصب می‌کند، باینری `midos-tunnel` را دانلود و SHA-256 آن را بررسی می‌کند، پایهٔ تانل کرنلی (ماژول‌ها، BBR، forwarding) را آماده می‌کند و پنل را به‌صورت سرویس `midos-tunnel-panel` راه می‌اندازد. اگر `ufw` یا `firewalld` فعال باشد، پورت پنل را باز می‌کند. هرگز جدول‌های فایروال را پاک نمی‌کند و به x-ui، xray، SSH یا نرم‌افزارهای دیگر دست نمی‌زند. در پایان آدرس پنل، نام کاربری و رمز را نشان می‌دهد.

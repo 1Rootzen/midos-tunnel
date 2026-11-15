@@ -2531,6 +2531,11 @@ teardown() {
     systemctl stop Midos-tunnel-rekey.service Midos-tunnel-encap.service 2> /dev/null
     systemctl disable Midos-tunnel-encap.service 2> /dev/null
     [[ -x "$DOWN_SCRIPT" ]] && bash "$DOWN_SCRIPT" > /dev/null 2>&1
+    # The up script saved the tunnel's rules for the next boot; save the live
+    # ruleset again now, or a reboot brings back DNAT rules into a tunnel that
+    # no longer exists and steals the ports from whatever replaced it. Saving
+    # the live set keeps every other program's rules as they are.
+    command -v netfilter-persistent > /dev/null 2>&1 && netfilter-persistent save > /dev/null 2>&1
     rm -f "$CONFIG_FILE" "$HEALTH_FILE"
     rm -f "$SERVICE_FILE" "$REKEY_SERVICE_FILE" "$REKEY_TIMER_FILE" "$ENCAP_SERVICE_FILE" \
         /etc/systemd/system/Midos-tunnel-watchdog.service
