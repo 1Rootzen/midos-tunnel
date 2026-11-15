@@ -12,7 +12,7 @@
 #  its link, user and password.
 #
 #  Environment (all optional):
-#      MIDOS_VERSION=v2.6.8      install this release instead of the latest
+#      MIDOS_VERSION=v2.6.9      install this release instead of the latest
 #      MIDOS_MIRROR=https://...  download the release files from a mirror
 #      MIDOS_PANEL_PORT=2053     panel port on first install (random otherwise)
 #      MIDOS_NO_KERNEL=1         skip the kernel-tunnel base
@@ -25,6 +25,10 @@
 set -uo pipefail
 
 REPO="1Rootzen/midos-tunnel"
+# the release this installer was published with: its files are mirrored on
+# jsDelivr under the dist-vX.Y.Z tag, the fallback when GitHub is out of reach
+DIST_VERSION="2.6.9"
+JSDELIVR_HOSTS="gcore.jsdelivr.net testingcf.jsdelivr.net cdn.jsdelivr.net fastly.jsdelivr.net"
 BIN="/usr/local/sbin/midos-tunnel"
 LEGACY_BIN="/usr/local/sbin/midos-veil" # where older installs kept the binary
 KERNEL_SCRIPT="/usr/local/sbin/Midos-tunnel.sh"
@@ -139,15 +143,36 @@ step_packages() {
     fi
 }
 
-fetch() { curl -fsSL --connect-timeout 20 --retry 4 --retry-delay 3 -m 900 "$1" -o "$2"; }
+# A source that does not answer is left quickly (10 s to connect, or a stall of
+# 20 s), so the next one gets its turn instead of the install hanging.
+fetch() { curl -fsSL --connect-timeout 10 --speed-limit 2048 --speed-time 20 --retry 2 --retry-delay 2 -m 600 "$1" -o "$2"; }
+
+# fetch_release NAME OUT takes a release file from the first source that has it.
+fetch_release() {
+    local s
+    for s in "${SOURCES[@]}"; do
+        fetch "${s}/$1" "$2" && return 0
+        echo "  ${s}/$1 did not download, trying the next source"
+    done
+    return 1
+}
 
 step_binary() {
-    fetch "${BASE}/${ASSET}" "${TMP}/${ASSET}" || { echo "download failed: ${BASE}/${ASSET}"; return 1; }
-    fetch "${BASE}/${ASSET}.sha256" "${TMP}/${ASSET}.sha256" || { echo "checksum download failed"; return 1; }
-    local want got
-    want="$(awk '{print $1}' "${TMP}/${ASSET}.sha256")"
-    got="$(sha256sum "${TMP}/${ASSET}" | awk '{print $1}')"
-    [[ -n "$want" && "$want" == "$got" ]] || { echo "checksum mismatch: want $want got $got"; return 1; }
+    # the binary and its checksum come from the same source, so a mirror
+    # holding an older copy can never pass for the new one
+    local s want got ok=""
+    for s in "${SOURCES[@]}"; do
+        if fetch "${s}/${ASSET}" "${TMP}/${ASSET}" && fetch "${s}/${ASSET}.sha256" "${TMP}/${ASSET}.sha256"; then
+            want="$(awk '{print $1}' "${TMP}/${ASSET}.sha256")"
+            got="$(sha256sum "${TMP}/${ASSET}" | awk '{print $1}')"
+            if [[ -n "$want" && "$want" == "$got" ]]; then ok="$s"; break; fi
+            echo "  checksum mismatch from ${s}: want $want got $got"
+        else
+            echo "  ${s}/${ASSET} did not download, trying the next source"
+        fi
+    done
+    [[ -n "$ok" ]] || { echo "download failed from every source"; return 1; }
+    echo "  downloaded from ${ok}"
     [[ "$(head -c 4 "${TMP}/${ASSET}" | od -An -tx1 | tr -d ' \n')" == "7f454c46" ]] || { echo "not a Linux binary"; return 1; }
     local old="$BIN"
     [[ -x "$old" ]] || old="$LEGACY_BIN"
@@ -157,7 +182,7 @@ step_binary() {
 }
 
 step_kernel_script() {
-    fetch "${BASE}/Midos-tunnel.sh" "${TMP}/Midos-tunnel.sh" || return 1
+    fetch_release Midos-tunnel.sh "${TMP}/Midos-tunnel.sh" || return 1
     bash -n "${TMP}/Midos-tunnel.sh" || return 1
     install -m 755 "${TMP}/Midos-tunnel.sh" "$KERNEL_SCRIPT"
 }
@@ -227,12 +252,21 @@ esac
 command -v apt-get > /dev/null 2>&1 || command -v dnf > /dev/null 2>&1 || command -v yum > /dev/null 2>&1 \
     || fail "No supported package manager found (apt, dnf or yum)."
 
+# Where the release files come from, in order. GitHub first; then jsDelivr,
+# which serves each release's files from its dist-vX.Y.Z tag in this repo -
+# from inside Iran GitHub is often slow or unreachable while one of these
+# jsDelivr hosts still answers (which one depends on the network).
 if [[ -n "${MIDOS_MIRROR:-}" ]]; then
-    BASE="${MIDOS_MIRROR%/}" REL="mirror"
-elif [[ -n "${MIDOS_VERSION:-}" ]]; then
-    BASE="https://github.com/${REPO}/releases/download/${MIDOS_VERSION}" REL="$MIDOS_VERSION"
+    SOURCES=("${MIDOS_MIRROR%/}") REL="mirror"
 else
-    BASE="https://github.com/${REPO}/releases/latest/download" REL="latest release"
+    if [[ -n "${MIDOS_VERSION:-}" ]]; then
+        SOURCES=("https://github.com/${REPO}/releases/download/${MIDOS_VERSION}") REL="$MIDOS_VERSION"
+        DIST="dist-v${MIDOS_VERSION#v}"
+    else
+        SOURCES=("https://github.com/${REPO}/releases/latest/download") REL="latest release"
+        DIST="dist-v${DIST_VERSION}"
+    fi
+    for h in $JSDELIVR_HOSTS; do SOURCES+=("https://${h}/gh/${REPO}@${DIST}"); done
 fi
 OS="$(. /etc/os-release 2> /dev/null && echo "${PRETTY_NAME:-Linux}")"
 printf '  %s%s · %s · %s%s\n\n' "$GRY" "${OS:-Linux}" "$(uname -m)" "$REL" "$N"

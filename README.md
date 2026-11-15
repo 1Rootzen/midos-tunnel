@@ -21,7 +21,7 @@ Direct, reverse and kernel tunnels · fleet management from one "mother" server 
 ## Install in one line
 
 ```bash
-bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/install.sh)
+f=/tmp/midos-install.sh; for u in https://github.com/1Rootzen/midos-tunnel/releases/latest/download https://gcore.jsdelivr.net/gh/1Rootzen/midos-tunnel@main https://testingcf.jsdelivr.net/gh/1Rootzen/midos-tunnel@main; do curl -fsSL --connect-timeout 10 -m 90 "$u/install.sh" -o $f && break; done && bash $f
 ```
 
 Run it as root on a Linux server. It asks nothing, shows a progress bar, and ends with the panel link, user name and password.
@@ -68,11 +68,12 @@ Run it as root on a Linux server. It asks nothing, shows a progress bar, and end
 ### Install, update, uninstall
 
 ```bash
-# install, or update to the latest release (an existing panel keeps its address and password)
-bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/install.sh)
+# install, or update to the latest release (an existing panel keeps its address and password);
+# tries GitHub first, then two jsDelivr mirrors that still answer from inside Iran
+f=/tmp/midos-install.sh; for u in https://github.com/1Rootzen/midos-tunnel/releases/latest/download https://gcore.jsdelivr.net/gh/1Rootzen/midos-tunnel@main https://testingcf.jsdelivr.net/gh/1Rootzen/midos-tunnel@main; do curl -fsSL --connect-timeout 10 -m 90 "$u/install.sh" -o $f && break; done && bash $f
 
-# the same installer through the jsDelivr mirror, if github.com is slow or blocked
-bash <(curl -fsSL https://cdn.jsdelivr.net/gh/1Rootzen/midos-tunnel@main/install.sh)
+# or straight from a jsDelivr mirror (testingcf.jsdelivr.net works too)
+bash <(curl -fsSL https://gcore.jsdelivr.net/gh/1Rootzen/midos-tunnel@main/install.sh)
 
 # remove everything Midos Tunnel installed (preview first with --dry-run)
 bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/uninstall.sh)
@@ -82,7 +83,7 @@ The installer installs the system packages, downloads the `midos-tunnel` binary 
 
 | Variable | Effect |
 |---|---|
-| `MIDOS_VERSION=v2.6.8` | install a specific release instead of the latest |
+| `MIDOS_VERSION=v2.6.9` | install a specific release instead of the latest |
 | `MIDOS_MIRROR=https://…` | download the release files from a mirror |
 | `MIDOS_PANEL_PORT=2053` | panel port on first install (random otherwise) |
 | `MIDOS_NO_KERNEL=1` | skip the kernel-tunnel base |
@@ -177,11 +178,12 @@ Pull requests are welcome.
 با کاربر root روی سرور لینوکسی اجرا کنید:
 
 ```bash
-# نصب یا به‌روزرسانی به آخرین نسخه (پنل موجود آدرس و رمزش را نگه می‌دارد)
-bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/install.sh)
+# نصب یا به‌روزرسانی به آخرین نسخه (پنل موجود آدرس و رمزش را نگه می‌دارد)؛
+# اول از گیت‌هاب، و اگر جواب نداد از دو آینهٔ jsDelivr که از داخل ایران باز هستند
+f=/tmp/midos-install.sh; for u in https://github.com/1Rootzen/midos-tunnel/releases/latest/download https://gcore.jsdelivr.net/gh/1Rootzen/midos-tunnel@main https://testingcf.jsdelivr.net/gh/1Rootzen/midos-tunnel@main; do curl -fsSL --connect-timeout 10 -m 90 "$u/install.sh" -o $f && break; done && bash $f
 
-# اگر github.com کند یا بسته بود، همان نصب‌کننده از آینهٔ jsDelivr
-bash <(curl -fsSL https://cdn.jsdelivr.net/gh/1Rootzen/midos-tunnel@main/install.sh)
+# یا مستقیم از آینهٔ jsDelivr (testingcf.jsdelivr.net هم کار می‌کند)
+bash <(curl -fsSL https://gcore.jsdelivr.net/gh/1Rootzen/midos-tunnel@main/install.sh)
 
 # حذف کامل (اول با --dry-run پیش‌نمایش بگیرید)
 bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/download/uninstall.sh)
@@ -191,7 +193,7 @@ bash <(curl -fsSL https://github.com/1Rootzen/midos-tunnel/releases/latest/downl
 
 | متغیر | کاربرد |
 |---|---|
-| `MIDOS_VERSION=v2.6.8` | نصب یک نسخهٔ مشخص به‌جای آخرین نسخه |
+| `MIDOS_VERSION=v2.6.9` | نصب یک نسخهٔ مشخص به‌جای آخرین نسخه |
 | `MIDOS_MIRROR=https://…` | دانلود فایل‌های ریلیز از یک میرور |
 | `MIDOS_PANEL_PORT=2053` | پورت پنل در نصب اول (در غیر این صورت تصادفی) |
 | `MIDOS_NO_KERNEL=1` | آماده نکردن پایهٔ تانل کرنلی |

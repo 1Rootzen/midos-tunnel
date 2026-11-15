@@ -897,8 +897,19 @@ func (s *panelServer) installBinary(ctx context.Context, ex hostExec, f nodeFact
 	default:
 		return "", fmt.Errorf("معماری %s پشتیبانی نمی‌شود", f.Arch)
 	}
-	cmd := "set -e\nT=" + remoteBin + ".new\nB=" + updateBase + "/" + asset + "\n" +
-		"curl -fsSL \"$B\" -o \"$T\"\nS=$(curl -fsSL \"$B.sha256\" | awk '{print $1}')\necho \"$S  $T\" | sha256sum -c --quiet\nchmod 755 \"$T\"\nmv -f \"$T\" " + remoteBin + "\n" + unit + restart
+	// GitHub first, then the jsDelivr mirrors of this release (GitHub is often
+	// out of reach from Iran); binary and checksum always from the same source
+	srcs := []string{updateBase}
+	for _, m := range updateMirrors {
+		srcs = append(srcs, mirrorBase(m, "dist-v"+version))
+	}
+	cmd := "set -e\nT=" + remoteBin + ".new\nA=" + asset + "\nok=\nfor B in " + strings.Join(srcs, " ") + "; do\n" + `
+  if curl -fsSL --connect-timeout 10 -m 300 "$B/$A" -o "$T" && S=$(curl -fsSL --connect-timeout 10 -m 60 "$B/$A.sha256" | awk '{print $1}') && [ -n "$S" ] && echo "$S  $T" | sha256sum -c --quiet; then ok=1; break; fi
+  echo "$B did not deliver $A, trying the next source"
+done
+[ -n "$ok" ] || { rm -f "$T"; echo "download failed from every source" >&2; exit 1; }
+chmod 755 "$T"
+mv -f "$T" ` + remoteBin + "\n" + unit + restart
 	if err := ex.Run(ctx, cmd, nil, log); err != nil {
 		return "", fmt.Errorf("دانلود باینری %s ناموفق بود: %w", f.Arch, err)
 	}
